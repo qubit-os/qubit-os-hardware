@@ -1,5 +1,8 @@
 # QubitOS Hardware Abstraction Layer (HAL)
 
+[![CI](https://github.com/qubit-os/qubit-os-hardware/actions/workflows/ci.yaml/badge.svg)](https://github.com/qubit-os/qubit-os-hardware/actions/workflows/ci.yaml)
+[![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
+
 Rust implementation of the QubitOS Hardware Abstraction Layer - the bridge between pulse optimization and quantum backends.
 
 ## Overview
