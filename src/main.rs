@@ -32,7 +32,7 @@ use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 use qubit_os_hardware::{
     backend::{iqm::IqmBackend, qutip::QutipBackend, BackendRegistry},
     config::Config,
-    server, Result, VERSION,
+    server, Error, Result, VERSION,
 };
 
 /// QubitOS Hardware Abstraction Layer Server
@@ -272,7 +272,7 @@ fn initialize_backends(config: &Config) -> Result<BackendRegistry> {
 
     if registry.is_empty() {
         error!("No backends available. At least one backend must be enabled.");
-        return Err(crate::error::Error::Config(
+        return Err(Error::Config(
             "No backends available. At least one backend must be enabled.".to_string(),
         ));
     }
