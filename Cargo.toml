@@ -21,7 +21,7 @@ prost-types = "0.12"
 http = "0.2"
 
 # REST API
-axum = "0.7"
+axum = "0.8"
 tower = "0.4"
 tower-http = { version = "0.5", features = ["cors", "trace"] }
 
