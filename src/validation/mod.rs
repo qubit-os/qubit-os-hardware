@@ -169,13 +169,13 @@ mod tests {
     #[test]
     fn test_validate_execute_pulse_request() {
         let limits = ResourceLimits::default();
-        
+
         // Valid request
         assert!(validate_execute_pulse_request(1000, 100, 50, &limits).is_ok());
-        
+
         // Zero shots
         assert!(validate_execute_pulse_request(0, 100, 50, &limits).is_err());
-        
+
         // Exceeds max shots
         assert!(validate_execute_pulse_request(1_000_000, 100, 50, &limits).is_err());
     }
@@ -184,13 +184,13 @@ mod tests {
     fn test_validate_pulse_envelope() {
         let i_env: Vec<f64> = vec![0.0; 100];
         let q_env: Vec<f64> = vec![0.0; 100];
-        
+
         // Valid envelope
         assert!(validate_pulse_envelope(&i_env, &q_env, 100, 100.0).is_ok());
-        
+
         // Wrong length
         assert!(validate_pulse_envelope(&i_env, &q_env, 50, 100.0).is_err());
-        
+
         // Contains NaN
         let mut bad_env = i_env.clone();
         bad_env[50] = f64::NAN;

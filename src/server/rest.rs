@@ -44,15 +44,15 @@ impl RestServer {
     pub fn new(state: Arc<ServerState>) -> Self {
         Self { state }
     }
-    
+
     /// Start the REST server.
     pub async fn serve(self, config: &ServerConfig) -> Result<()> {
         let addr: SocketAddr = format!("{}:{}", config.host, config.rest_port)
             .parse()
             .map_err(|e| Error::Config(format!("Invalid REST address: {}", e)))?;
-        
+
         info!(address = %addr, "Starting REST server");
-        
+
         // Build router
         let app = Router::new()
             .route("/api/v1/health", get(health_check))
@@ -68,12 +68,13 @@ impl RestServer {
             )
             .layer(TraceLayer::new_for_http())
             .with_state(self.state.clone());
-        
+
         let mut shutdown_rx = self.state.shutdown_receiver();
-        
-        let listener = tokio::net::TcpListener::bind(addr).await
+
+        let listener = tokio::net::TcpListener::bind(addr)
+            .await
             .map_err(|e| Error::Server(format!("Failed to bind REST server: {}", e)))?;
-        
+
         axum::serve(listener, app)
             .with_graceful_shutdown(async move {
                 let _ = shutdown_rx.changed().await;
@@ -81,7 +82,7 @@ impl RestServer {
             })
             .await
             .map_err(|e| Error::Server(format!("REST server error: {}", e)))?;
-        
+
         Ok(())
     }
 }
@@ -185,7 +186,7 @@ async fn health_check(
 ) -> std::result::Result<Json<HealthResponse>, (StatusCode, Json<ErrorResponse>)> {
     let mut backends = Vec::new();
     let mut overall_healthy = true;
-    
+
     for name in state.registry.list() {
         if let Ok(backend) = state.registry.get(&name) {
             let status = match backend.health_check().await {
@@ -208,7 +209,7 @@ async fn health_check(
                     format!("error: {}", e)
                 }
             };
-            
+
             backends.push(BackendHealth {
                 name: name.clone(),
                 status,
@@ -216,9 +217,14 @@ async fn health_check(
             });
         }
     }
-    
+
     Ok(Json(HealthResponse {
-        status: if overall_healthy { "healthy" } else { "degraded" }.to_string(),
+        status: if overall_healthy {
+            "healthy"
+        } else {
+            "degraded"
+        }
+        .to_string(),
         backends,
     }))
 }
@@ -228,7 +234,7 @@ async fn list_backends(
     State(state): State<Arc<ServerState>>,
 ) -> std::result::Result<Json<BackendsResponse>, (StatusCode, Json<ErrorResponse>)> {
     let mut backends = Vec::new();
-    
+
     for name in state.registry.list() {
         if let Ok(backend) = state.registry.get(&name) {
             if let Ok(info) = backend.get_hardware_info().await {
@@ -240,7 +246,7 @@ async fn list_backends(
             }
         }
     }
-    
+
     Ok(Json(BackendsResponse {
         backends,
         default_backend: state.registry.default_backend_name(),
@@ -261,7 +267,7 @@ async fn get_backend_info(
             }),
         )
     })?;
-    
+
     let info = backend.get_hardware_info().await.map_err(|e| {
         (
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -271,7 +277,7 @@ async fn get_backend_info(
             }),
         )
     })?;
-    
+
     Ok(Json(BackendInfoResponse {
         name: info.name,
         backend_type: info.backend_type.to_string(),
@@ -292,16 +298,17 @@ async fn execute_pulse(
 ) -> std::result::Result<Json<ExecuteResponse>, (StatusCode, Json<ErrorResponse>)> {
     let request_id = Uuid::new_v4().to_string();
     let pulse_id = req.pulse_id.unwrap_or_else(|| Uuid::new_v4().to_string());
-    
+
     debug!(
         request_id = %request_id,
         pulse_id = %pulse_id,
         backend = ?req.backend_name,
         "REST execute_pulse request"
     );
-    
+
     // Get backend
-    let backend = state.registry
+    let backend = state
+        .registry
         .get_or_default(req.backend_name.as_deref())
         .map_err(|e| {
             (
@@ -312,7 +319,7 @@ async fn execute_pulse(
                 }),
             )
         })?;
-    
+
     // Build request
     let num_time_steps = req.i_envelope.len() as u32;
     let backend_request = BackendRequest {
@@ -327,7 +334,7 @@ async fn execute_pulse(
         return_state_vector: req.return_state_vector.unwrap_or(false),
         include_noise: req.include_noise.unwrap_or(false),
     };
-    
+
     // Execute
     let result = backend.execute_pulse(backend_request).await.map_err(|e| {
         error!(error = %e, "Pulse execution failed");
@@ -339,7 +346,7 @@ async fn execute_pulse(
             }),
         )
     })?;
-    
+
     Ok(Json(ExecuteResponse {
         request_id,
         pulse_id,
@@ -363,7 +370,7 @@ async fn get_version() -> Json<VersionResponse> {
 mod tests {
     use super::*;
     use crate::backend::BackendRegistry;
-    
+
     #[tokio::test]
     async fn test_rest_server_creation() {
         let registry = Arc::new(BackendRegistry::default());

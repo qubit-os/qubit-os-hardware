@@ -53,10 +53,10 @@ use crate::error::Result;
 pub struct ServerState {
     /// Backend registry
     pub registry: Arc<BackendRegistry>,
-    
+
     /// Shutdown signal sender
     shutdown_tx: watch::Sender<bool>,
-    
+
     /// Shutdown signal receiver
     shutdown_rx: watch::Receiver<bool>,
 }
@@ -71,12 +71,12 @@ impl ServerState {
             shutdown_rx,
         }
     }
-    
+
     /// Get a shutdown receiver.
     pub fn shutdown_receiver(&self) -> watch::Receiver<bool> {
         self.shutdown_rx.clone()
     }
-    
+
     /// Signal shutdown.
     pub fn shutdown(&self) {
         let _ = self.shutdown_tx.send(true);
@@ -84,23 +84,20 @@ impl ServerState {
 }
 
 /// Run both gRPC and REST servers.
-pub async fn run_servers(
-    config: &ServerConfig,
-    registry: Arc<BackendRegistry>,
-) -> Result<()> {
+pub async fn run_servers(config: &ServerConfig, registry: Arc<BackendRegistry>) -> Result<()> {
     let state = Arc::new(ServerState::new(registry));
-    
+
     // Create servers
     let grpc_server = GrpcServer::new(state.clone());
     let rest_server = RestServer::new(state.clone());
-    
+
     info!(
         grpc_port = config.grpc_port,
         rest_port = config.rest_port,
         rest_enabled = config.rest_enabled,
         "Starting HAL servers"
     );
-    
+
     // Run servers concurrently
     if config.rest_enabled {
         tokio::select! {
@@ -119,6 +116,6 @@ pub async fn run_servers(
         // Only run gRPC server
         grpc_server.serve(config).await?;
     }
-    
+
     Ok(())
 }

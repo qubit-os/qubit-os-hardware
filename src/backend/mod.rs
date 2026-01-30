@@ -15,7 +15,7 @@ pub mod registry;
 pub mod r#trait;
 
 pub use r#trait::{
-    BackendType, ExecutePulseRequest, HardwareInfo, HealthStatus,
-    MeasurementResult, QuantumBackend, ResultQuality,
+    BackendType, ExecutePulseRequest, HardwareInfo, HealthStatus, MeasurementResult,
+    QuantumBackend, ResultQuality,
 };
 pub use registry::BackendRegistry;

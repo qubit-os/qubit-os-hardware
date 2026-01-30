@@ -14,19 +14,19 @@ pub mod quantum {
     pub mod common {
         pub mod v1 {
             use serde::{Deserialize, Serialize};
-            
+
             #[derive(Clone, Debug, Default, Serialize, Deserialize)]
             pub struct TraceContext {
                 pub trace_id: String,
                 pub span_id: String,
             }
-            
+
             #[derive(Clone, Debug, Default, Serialize, Deserialize)]
             pub struct Timestamp {
                 pub seconds: i64,
                 pub nanos: i32,
             }
-            
+
             #[derive(Clone, Debug, Default, Serialize, Deserialize)]
             pub struct Error {
                 pub code: String,
@@ -34,29 +34,29 @@ pub mod quantum {
             }
         }
     }
-    
+
     pub mod pulse {
         pub mod v1 {
             use serde::{Deserialize, Serialize};
-            
+
             #[derive(Clone, Debug, Default, Serialize, Deserialize)]
             pub struct HamiltonianSpec {
                 pub drift_terms: Vec<PauliTerm>,
                 pub control_terms: Vec<ControlTerm>,
             }
-            
+
             #[derive(Clone, Debug, Default, Serialize, Deserialize)]
             pub struct PauliTerm {
                 pub coefficient: f64,
                 pub paulis: String,
             }
-            
+
             #[derive(Clone, Debug, Default, Serialize, Deserialize)]
             pub struct ControlTerm {
                 pub name: String,
                 pub paulis: String,
             }
-            
+
             #[derive(Clone, Debug, Default, Serialize, Deserialize)]
             pub struct PulseShape {
                 pub pulse_id: String,
@@ -65,7 +65,7 @@ pub mod quantum {
                 pub duration_ns: u32,
                 pub num_time_steps: u32,
             }
-            
+
             #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
             #[repr(i32)]
             pub enum GateType {
@@ -82,54 +82,56 @@ pub mod quantum {
             }
         }
     }
-    
+
     pub mod backend {
         pub mod v1 {
             use serde::{Deserialize, Serialize};
             use std::collections::HashMap;
-            
+
             // Service trait for gRPC
             pub mod quantum_backend_server {
-                use tonic::{Request, Response, Status};
                 use super::*;
-                
+                use tonic::{Request, Response, Status};
+
                 /// Service name for gRPC reflection
                 pub const SERVICE_NAME: &str = "quantum.backend.v1.QuantumBackend";
-                
+
                 #[tonic::async_trait]
                 pub trait QuantumBackend: Send + Sync + 'static {
                     async fn execute_pulse(
                         &self,
                         request: Request<ExecutePulseRequest>,
                     ) -> Result<Response<ExecutePulseResponse>, Status>;
-                    
+
                     async fn get_hardware_info(
                         &self,
                         request: Request<GetHardwareInfoRequest>,
                     ) -> Result<Response<GetHardwareInfoResponse>, Status>;
-                    
+
                     async fn health_check(
                         &self,
                         request: Request<HealthCheckRequest>,
                     ) -> Result<Response<HealthCheckResponse>, Status>;
                 }
-                
+
                 #[derive(Debug, Clone)]
                 #[allow(dead_code)]
                 pub struct QuantumBackendServer<T> {
                     inner: std::sync::Arc<T>,
                 }
-                
+
                 impl<T: QuantumBackend> QuantumBackendServer<T> {
                     pub fn new(inner: T) -> Self {
-                        Self { inner: std::sync::Arc::new(inner) }
+                        Self {
+                            inner: std::sync::Arc::new(inner),
+                        }
                     }
                 }
-                
+
                 impl<T: QuantumBackend> tonic::server::NamedService for QuantumBackendServer<T> {
                     const NAME: &'static str = SERVICE_NAME;
                 }
-                
+
                 impl<T: QuantumBackend> tower::Service<http::Request<tonic::transport::Body>>
                     for QuantumBackendServer<T>
                 {
@@ -142,15 +144,18 @@ pub mod quantum {
                                 + 'static,
                         >,
                     >;
-                    
+
                     fn poll_ready(
                         &mut self,
                         _cx: &mut std::task::Context<'_>,
                     ) -> std::task::Poll<Result<(), Self::Error>> {
                         std::task::Poll::Ready(Ok(()))
                     }
-                    
-                    fn call(&mut self, _req: http::Request<tonic::transport::Body>) -> Self::Future {
+
+                    fn call(
+                        &mut self,
+                        _req: http::Request<tonic::transport::Body>,
+                    ) -> Self::Future {
                         Box::pin(async move {
                             Ok(http::Response::builder()
                                 .status(501)
@@ -160,7 +165,7 @@ pub mod quantum {
                     }
                 }
             }
-            
+
             #[derive(Clone, Debug, Default, Serialize, Deserialize)]
             pub struct ExecutePulseRequest {
                 pub pulse_id: String,
@@ -175,7 +180,7 @@ pub mod quantum {
                 pub return_state_vector: bool,
                 pub include_noise: bool,
             }
-            
+
             #[derive(Clone, Debug, Default, Serialize, Deserialize)]
             pub struct ExecutePulseResponse {
                 pub request_id: String,
@@ -183,7 +188,7 @@ pub mod quantum {
                 pub result: Option<MeasurementResult>,
                 pub error: Option<super::super::common::v1::Error>,
             }
-            
+
             #[derive(Clone, Debug, Default, Serialize, Deserialize)]
             pub struct MeasurementResult {
                 pub bitstring_counts: Option<BitstringCounts>,
@@ -193,22 +198,22 @@ pub mod quantum {
                 pub state_vector_real: Vec<f64>,
                 pub state_vector_imag: Vec<f64>,
             }
-            
+
             #[derive(Clone, Debug, Default, Serialize, Deserialize)]
             pub struct BitstringCounts {
                 pub counts: HashMap<String, i64>,
             }
-            
+
             #[derive(Clone, Debug, Default, Serialize, Deserialize)]
             pub struct GetHardwareInfoRequest {
                 pub backend_name: Option<String>,
             }
-            
+
             #[derive(Clone, Debug, Default, Serialize, Deserialize)]
             pub struct GetHardwareInfoResponse {
                 pub info: Option<HardwareInfo>,
             }
-            
+
             #[derive(Clone, Debug, Default, Serialize, Deserialize)]
             pub struct HardwareInfo {
                 pub name: String,
@@ -221,19 +226,19 @@ pub mod quantum {
                 pub supports_noise_model: bool,
                 pub software_version: String,
             }
-            
+
             #[derive(Clone, Debug, Default, Serialize, Deserialize)]
             pub struct HealthCheckRequest {
                 pub backend_name: Option<String>,
             }
-            
+
             #[derive(Clone, Debug, Default, Serialize, Deserialize)]
             pub struct HealthCheckResponse {
                 pub status: i32,
                 pub message: String,
                 pub backends: HashMap<String, i32>,
             }
-            
+
             #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
             #[repr(i32)]
             pub enum HealthStatus {

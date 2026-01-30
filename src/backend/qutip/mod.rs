@@ -43,13 +43,13 @@ static QUTIP_CHECKED: AtomicBool = AtomicBool::new(false);
 pub struct QutipBackend {
     /// Backend name
     name: String,
-    
+
     /// Number of qubits
     num_qubits: u32,
-    
+
     /// Resource limits
     limits: ResourceLimits,
-    
+
     /// Whether to return state vectors
     supports_state_vector: bool,
 }
@@ -63,12 +63,9 @@ impl QutipBackend {
                 "QuTiP is not available. Install with: pip install qutip numpy".to_string(),
             ));
         }
-        
-        info!(
-            num_qubits = config.num_qubits,
-            "Initializing QuTiP backend"
-        );
-        
+
+        info!(num_qubits = config.num_qubits, "Initializing QuTiP backend");
+
         Ok(Self {
             name: "qutip_simulator".to_string(),
             num_qubits: config.num_qubits,
@@ -80,19 +77,19 @@ impl QutipBackend {
             supports_state_vector: true,
         })
     }
-    
+
     /// Create with default configuration.
     pub fn new_default() -> Result<Self, BackendError> {
         Self::new(&QutipConfig::default())
     }
-    
+
     /// Check if QuTiP is available.
     pub fn check_qutip_available() -> bool {
         // Only check once
         if QUTIP_CHECKED.load(Ordering::Relaxed) {
             return QUTIP_AVAILABLE.load(Ordering::Relaxed);
         }
-        
+
         let available = Python::with_gil(|py| {
             // Try to import qutip
             match py.import("qutip") {
@@ -115,82 +112,84 @@ impl QutipBackend {
                 }
             }
         });
-        
+
         QUTIP_CHECKED.store(true, Ordering::Relaxed);
         QUTIP_AVAILABLE.store(available, Ordering::Relaxed);
         available
     }
-    
+
     /// Execute pulse simulation in Python.
     fn execute_python(
         &self,
         request: &ExecutePulseRequest,
     ) -> Result<MeasurementResult, BackendError> {
-        Python::with_gil(|py| {
-            self.execute_python_inner(py, request)
-        })
+        Python::with_gil(|py| self.execute_python_inner(py, request))
     }
-    
+
     fn execute_python_inner(
         &self,
         py: Python<'_>,
         request: &ExecutePulseRequest,
     ) -> Result<MeasurementResult, BackendError> {
         // Import required modules
-        let qutip = py.import("qutip").map_err(|e| {
-            BackendError::Python(format!("Failed to import qutip: {}", e))
-        })?;
-        let numpy = py.import("numpy").map_err(|e| {
-            BackendError::Python(format!("Failed to import numpy: {}", e))
-        })?;
-        
+        let qutip = py
+            .import("qutip")
+            .map_err(|e| BackendError::Python(format!("Failed to import qutip: {}", e)))?;
+        let numpy = py
+            .import("numpy")
+            .map_err(|e| BackendError::Python(format!("Failed to import numpy: {}", e)))?;
+
         // Convert envelopes to numpy arrays
         let i_env = PyList::new(py, &request.i_envelope);
         let q_env = PyList::new(py, &request.q_envelope);
-        
-        let i_array = numpy.call_method1("array", (i_env,)).map_err(|e| {
-            BackendError::Python(format!("Failed to create I numpy array: {}", e))
-        })?;
-        let q_array = numpy.call_method1("array", (q_env,)).map_err(|e| {
-            BackendError::Python(format!("Failed to create Q numpy array: {}", e))
-        })?;
-        
+
+        let i_array = numpy
+            .call_method1("array", (i_env,))
+            .map_err(|e| BackendError::Python(format!("Failed to create I numpy array: {}", e)))?;
+        let q_array = numpy
+            .call_method1("array", (q_env,))
+            .map_err(|e| BackendError::Python(format!("Failed to create Q numpy array: {}", e)))?;
+
         // Build the simulation code
         let locals = PyDict::new(py);
-        locals.set_item("qutip", qutip).map_err(|e| {
-            BackendError::Python(format!("Failed to set qutip local: {}", e))
-        })?;
-        locals.set_item("np", numpy).map_err(|e| {
-            BackendError::Python(format!("Failed to set numpy local: {}", e))
-        })?;
-        locals.set_item("i_envelope", i_array).map_err(|e| {
-            BackendError::Python(format!("Failed to set i_envelope local: {}", e))
-        })?;
-        locals.set_item("q_envelope", q_array).map_err(|e| {
-            BackendError::Python(format!("Failed to set q_envelope local: {}", e))
-        })?;
-        locals.set_item("num_qubits", self.num_qubits).map_err(|e| {
-            BackendError::Python(format!("Failed to set num_qubits local: {}", e))
-        })?;
-        locals.set_item("num_shots", request.num_shots).map_err(|e| {
-            BackendError::Python(format!("Failed to set num_shots local: {}", e))
-        })?;
-        locals.set_item("num_time_steps", request.num_time_steps).map_err(|e| {
-            BackendError::Python(format!("Failed to set num_time_steps local: {}", e))
-        })?;
-        locals.set_item("duration_ns", request.duration_ns).map_err(|e| {
-            BackendError::Python(format!("Failed to set duration_ns local: {}", e))
-        })?;
-        
+        locals
+            .set_item("qutip", qutip)
+            .map_err(|e| BackendError::Python(format!("Failed to set qutip local: {}", e)))?;
+        locals
+            .set_item("np", numpy)
+            .map_err(|e| BackendError::Python(format!("Failed to set numpy local: {}", e)))?;
+        locals
+            .set_item("i_envelope", i_array)
+            .map_err(|e| BackendError::Python(format!("Failed to set i_envelope local: {}", e)))?;
+        locals
+            .set_item("q_envelope", q_array)
+            .map_err(|e| BackendError::Python(format!("Failed to set q_envelope local: {}", e)))?;
+        locals
+            .set_item("num_qubits", self.num_qubits)
+            .map_err(|e| BackendError::Python(format!("Failed to set num_qubits local: {}", e)))?;
+        locals
+            .set_item("num_shots", request.num_shots)
+            .map_err(|e| BackendError::Python(format!("Failed to set num_shots local: {}", e)))?;
+        locals
+            .set_item("num_time_steps", request.num_time_steps)
+            .map_err(|e| {
+                BackendError::Python(format!("Failed to set num_time_steps local: {}", e))
+            })?;
+        locals
+            .set_item("duration_ns", request.duration_ns)
+            .map_err(|e| BackendError::Python(format!("Failed to set duration_ns local: {}", e)))?;
+
         let target_qubits: Vec<i32> = request.target_qubits.iter().map(|&x| x as i32).collect();
         let target_list = PyList::new(py, &target_qubits);
         locals.set_item("target_qubits", target_list).map_err(|e| {
             BackendError::Python(format!("Failed to set target_qubits local: {}", e))
         })?;
-        locals.set_item("return_state_vector", request.return_state_vector).map_err(|e| {
-            BackendError::Python(format!("Failed to set return_state_vector local: {}", e))
-        })?;
-        
+        locals
+            .set_item("return_state_vector", request.return_state_vector)
+            .map_err(|e| {
+                BackendError::Python(format!("Failed to set return_state_vector local: {}", e))
+            })?;
+
         // Python simulation code
         let code = r#"
 import numpy as np
@@ -281,35 +280,33 @@ simulation_result = {
     'probabilities': probs.tolist(),
 }
 "#;
-        
+
         // Execute Python code
         py.run(code, None, Some(locals)).map_err(|e| {
             error!("Python simulation failed: {}", e);
             BackendError::Python(format!("Simulation failed: {}", e))
         })?;
-        
+
         // Extract results
-        let result = locals.get_item("simulation_result").map_err(|e| {
-            BackendError::Python(format!("Failed to get simulation_result: {}", e))
-        })?.ok_or_else(|| {
-            BackendError::Python("simulation_result not found".to_string())
-        })?;
-        
-        let result_dict = result.downcast::<PyDict>().map_err(|e| {
-            BackendError::Python(format!("simulation_result is not a dict: {}", e))
-        })?;
-        
+        let result = locals
+            .get_item("simulation_result")
+            .map_err(|e| BackendError::Python(format!("Failed to get simulation_result: {}", e)))?
+            .ok_or_else(|| BackendError::Python("simulation_result not found".to_string()))?;
+
+        let result_dict = result
+            .downcast::<PyDict>()
+            .map_err(|e| BackendError::Python(format!("simulation_result is not a dict: {}", e)))?;
+
         // Extract bitstring counts
-        let counts_obj = result_dict.get_item("bitstring_counts").map_err(|e| {
-            BackendError::Python(format!("Failed to get bitstring_counts: {}", e))
-        })?.ok_or_else(|| {
-            BackendError::Python("bitstring_counts not found".to_string())
-        })?;
-        
-        let counts_dict = counts_obj.downcast::<PyDict>().map_err(|e| {
-            BackendError::Python(format!("bitstring_counts is not a dict: {}", e))
-        })?;
-        
+        let counts_obj = result_dict
+            .get_item("bitstring_counts")
+            .map_err(|e| BackendError::Python(format!("Failed to get bitstring_counts: {}", e)))?
+            .ok_or_else(|| BackendError::Python("bitstring_counts not found".to_string()))?;
+
+        let counts_dict = counts_obj
+            .downcast::<PyDict>()
+            .map_err(|e| BackendError::Python(format!("bitstring_counts is not a dict: {}", e)))?;
+
         let mut bitstring_counts = HashMap::new();
         for (key, value) in counts_dict.iter() {
             let k: String = key.extract::<String>().map_err(|e| {
@@ -320,40 +317,43 @@ simulation_result = {
             })?;
             bitstring_counts.insert(k, v);
         }
-        
+
         // Extract shots
-        let total_shots: u32 = result_dict.get_item("total_shots").map_err(|e| {
-            BackendError::Python(format!("Failed to get total_shots: {}", e))
-        })?.ok_or_else(|| {
-            BackendError::Python("total_shots not found".to_string())
-        })?.extract::<u32>().map_err(|e| {
-            BackendError::Python(format!("Failed to extract total_shots: {}", e))
-        })?;
-        
-        let successful_shots: u32 = result_dict.get_item("successful_shots").map_err(|e| {
-            BackendError::Python(format!("Failed to get successful_shots: {}", e))
-        })?.ok_or_else(|| {
-            BackendError::Python("successful_shots not found".to_string())
-        })?.extract::<u32>().map_err(|e| {
-            BackendError::Python(format!("Failed to extract successful_shots: {}", e))
-        })?;
-        
+        let total_shots: u32 = result_dict
+            .get_item("total_shots")
+            .map_err(|e| BackendError::Python(format!("Failed to get total_shots: {}", e)))?
+            .ok_or_else(|| BackendError::Python("total_shots not found".to_string()))?
+            .extract::<u32>()
+            .map_err(|e| BackendError::Python(format!("Failed to extract total_shots: {}", e)))?;
+
+        let successful_shots: u32 = result_dict
+            .get_item("successful_shots")
+            .map_err(|e| BackendError::Python(format!("Failed to get successful_shots: {}", e)))?
+            .ok_or_else(|| BackendError::Python("successful_shots not found".to_string()))?
+            .extract::<u32>()
+            .map_err(|e| {
+                BackendError::Python(format!("Failed to extract successful_shots: {}", e))
+            })?;
+
         // Extract state vector if present
         let state_vector = if request.return_state_vector {
-            let sv_obj = result_dict.get_item("state_vector").map_err(|e| {
-                BackendError::Python(format!("Failed to get state_vector: {}", e))
-            })?;
-            
+            let sv_obj = result_dict
+                .get_item("state_vector")
+                .map_err(|e| BackendError::Python(format!("Failed to get state_vector: {}", e)))?;
+
             match sv_obj {
                 Some(sv) if !sv.is_none() => {
                     let sv_list = sv.downcast::<PyList>().map_err(|e| {
                         BackendError::Python(format!("state_vector is not a list: {}", e))
                     })?;
-                    
+
                     let mut vec = Vec::new();
                     for item in sv_list.iter() {
                         let tuple: (f64, f64) = item.extract::<(f64, f64)>().map_err(|e| {
-                            BackendError::Python(format!("Failed to extract state vector element: {}", e))
+                            BackendError::Python(format!(
+                                "Failed to extract state vector element: {}",
+                                e
+                            ))
                         })?;
                         vec.push(tuple);
                     }
@@ -364,13 +364,13 @@ simulation_result = {
         } else {
             None
         };
-        
+
         debug!(
             total_shots = total_shots,
             successful_shots = successful_shots,
             "QuTiP simulation completed"
         );
-        
+
         Ok(MeasurementResult {
             bitstring_counts,
             total_shots,
@@ -387,11 +387,11 @@ impl QuantumBackend for QutipBackend {
     fn name(&self) -> &str {
         &self.name
     }
-    
+
     fn backend_type(&self) -> BackendType {
         BackendType::Simulator
     }
-    
+
     async fn execute_pulse(
         &self,
         request: ExecutePulseRequest,
@@ -401,7 +401,7 @@ impl QuantumBackend for QutipBackend {
             num_shots = request.num_shots,
             "Executing pulse on QuTiP backend"
         );
-        
+
         // Validate request
         if request.target_qubits.iter().any(|&q| q >= self.num_qubits) {
             return Err(BackendError::InvalidRequest(format!(
@@ -409,21 +409,21 @@ impl QuantumBackend for QutipBackend {
                 self.num_qubits - 1
             )));
         }
-        
+
         if request.num_shots > self.limits.max_shots {
             return Err(BackendError::InvalidRequest(format!(
                 "Requested shots {} exceeds limit {}",
                 request.num_shots, self.limits.max_shots
             )));
         }
-        
+
         // Capture backend configuration before spawn_blocking
         // (spawn_blocking requires 'static, so we clone the needed data)
         let name = self.name.clone();
         let num_qubits = self.num_qubits;
         let limits = self.limits.clone();
         let supports_state_vector = self.supports_state_vector;
-        
+
         // Run simulation (blocking, but wrapped in async)
         tokio::task::spawn_blocking(move || {
             let backend = QutipBackend {
@@ -437,10 +437,10 @@ impl QuantumBackend for QutipBackend {
         .await
         .map_err(|e| BackendError::ExecutionFailed(format!("Task join error: {}", e)))?
     }
-    
+
     async fn get_hardware_info(&self) -> Result<HardwareInfo, BackendError> {
         let available_qubits: Vec<u32> = (0..self.num_qubits).collect();
-        
+
         Ok(HardwareInfo {
             name: self.name.clone(),
             backend_type: BackendType::Simulator,
@@ -466,7 +466,7 @@ impl QuantumBackend for QutipBackend {
             limits: self.limits.clone(),
         })
     }
-    
+
     async fn health_check(&self) -> Result<HealthStatus, BackendError> {
         if Self::check_qutip_available() {
             Ok(HealthStatus::Healthy)
@@ -474,7 +474,7 @@ impl QuantumBackend for QutipBackend {
             Ok(HealthStatus::Unavailable)
         }
     }
-    
+
     fn resource_limits(&self) -> &ResourceLimits {
         &self.limits
     }
@@ -483,7 +483,7 @@ impl QuantumBackend for QutipBackend {
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_qutip_availability_check() {
         // This will check if QuTiP is available
@@ -491,7 +491,7 @@ mod tests {
         let available = QutipBackend::check_qutip_available();
         println!("QuTiP available: {}", available);
     }
-    
+
     #[tokio::test]
     async fn test_hardware_info() {
         // Create backend (may fail if QuTiP not available)

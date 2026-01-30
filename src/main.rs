@@ -30,10 +30,9 @@ use tracing::{error, info};
 use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 
 use qubit_os_hardware::{
-    backend::{qutip::QutipBackend, iqm::IqmBackend, BackendRegistry},
+    backend::{iqm::IqmBackend, qutip::QutipBackend, BackendRegistry},
     config::Config,
-    server,
-    Result, VERSION,
+    server, Result, VERSION,
 };
 
 /// QubitOS Hardware Abstraction Layer Server
@@ -46,11 +45,11 @@ struct Cli {
     /// Path to configuration file
     #[arg(short, long, global = true)]
     config: Option<PathBuf>,
-    
+
     /// Log level (trace, debug, info, warn, error)
     #[arg(long, global = true, default_value = "info")]
     log_level: String,
-    
+
     #[command(subcommand)]
     command: Commands,
 }
@@ -62,29 +61,29 @@ enum Commands {
         /// gRPC port
         #[arg(long, env = "QUBITOS_HAL_GRPC_PORT")]
         grpc_port: Option<u16>,
-        
+
         /// REST port
         #[arg(long, env = "QUBITOS_HAL_REST_PORT")]
         rest_port: Option<u16>,
-        
+
         /// Disable REST API
         #[arg(long)]
         no_rest: bool,
     },
-    
+
     /// Check backend health
     Health {
         /// Specific backend to check
         #[arg(short, long)]
         backend: Option<String>,
     },
-    
+
     /// List available backends
     Backends,
-    
+
     /// Show effective configuration
     Config,
-    
+
     /// Validate configuration file
     Validate,
 }
@@ -92,13 +91,13 @@ enum Commands {
 #[tokio::main]
 async fn main() -> Result<()> {
     let cli = Cli::parse();
-    
+
     // Initialize logging
     init_logging(&cli.log_level);
-    
+
     // Load configuration
     let mut config = Config::load(cli.config.as_deref())?;
-    
+
     match cli.command {
         Commands::Serve {
             grpc_port,
@@ -115,13 +114,13 @@ async fn main() -> Result<()> {
             if no_rest {
                 config.server.rest_enabled = false;
             }
-            
+
             // Validate config
             config.validate()?;
-            
+
             // Initialize backends
             let registry = Arc::new(initialize_backends(&config)?);
-            
+
             info!(
                 version = VERSION,
                 grpc_port = config.server.grpc_port,
@@ -130,29 +129,27 @@ async fn main() -> Result<()> {
                 backends = ?registry.list(),
                 "Starting QubitOS HAL server"
             );
-            
+
             // Run servers
             server::run_servers(&config.server, registry).await?;
         }
-        
+
         Commands::Health { backend } => {
             // Initialize backends for health check
             let registry = Arc::new(initialize_backends(&config)?);
-            
+
             if let Some(name) = backend {
                 // Check specific backend
                 match registry.get(&name) {
-                    Ok(b) => {
-                        match b.health_check().await {
-                            Ok(status) => {
-                                println!("{}: {:?}", name, status);
-                            }
-                            Err(e) => {
-                                eprintln!("{}: Error - {}", name, e);
-                                std::process::exit(1);
-                            }
+                    Ok(b) => match b.health_check().await {
+                        Ok(status) => {
+                            println!("{}: {:?}", name, status);
                         }
-                    }
+                        Err(e) => {
+                            eprintln!("{}: Error - {}", name, e);
+                            std::process::exit(1);
+                        }
+                    },
                     Err(e) => {
                         eprintln!("Backend not found: {}", e);
                         std::process::exit(1);
@@ -166,7 +163,9 @@ async fn main() -> Result<()> {
                         match b.health_check().await {
                             Ok(status) => {
                                 println!("{}: {:?}", name, status);
-                                if status != qubit_os_hardware::backend::r#trait::HealthStatus::Healthy {
+                                if status
+                                    != qubit_os_hardware::backend::r#trait::HealthStatus::Healthy
+                                {
                                     all_healthy = false;
                                 }
                             }
@@ -177,17 +176,17 @@ async fn main() -> Result<()> {
                         }
                     }
                 }
-                
+
                 if !all_healthy {
                     std::process::exit(1);
                 }
             }
         }
-        
+
         Commands::Backends => {
             // Initialize and list backends
             let registry = Arc::new(initialize_backends(&config)?);
-            
+
             println!("Available backends:");
             for (name, backend_type) in registry.list_with_types() {
                 let default_marker = if Some(&name) == registry.default_backend_name().as_ref() {
@@ -197,17 +196,17 @@ async fn main() -> Result<()> {
                 };
                 println!("  {} [{}]{}", name, backend_type, default_marker);
             }
-            
+
             if registry.is_empty() {
                 println!("  (no backends available)");
             }
         }
-        
+
         Commands::Config => {
             // Show effective configuration
             println!("{}", serde_yaml::to_string(&config)?);
         }
-        
+
         Commands::Validate => {
             // Validate configuration
             match config.validate() {
@@ -221,15 +220,14 @@ async fn main() -> Result<()> {
             }
         }
     }
-    
+
     Ok(())
 }
 
 /// Initialize logging with tracing.
 fn init_logging(level: &str) {
-    let filter = EnvFilter::try_from_default_env()
-        .unwrap_or_else(|_| EnvFilter::new(level));
-    
+    let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new(level));
+
     tracing_subscriber::registry()
         .with(filter)
         .with(fmt::layer().with_target(true))
@@ -239,14 +237,14 @@ fn init_logging(level: &str) {
 /// Initialize backends based on configuration.
 fn initialize_backends(config: &Config) -> Result<BackendRegistry> {
     let registry = BackendRegistry::new(&config.backends);
-    
+
     // Initialize QuTiP backend if enabled
     if config.backends.qutip_simulator.enabled {
         match QutipBackend::new(&config.backends.qutip_simulator) {
             Ok(backend) => {
                 info!("QuTiP backend initialized");
                 registry.register(Arc::new(backend));
-                
+
                 if config.backends.qutip_simulator.default {
                     let _ = registry.set_default("qutip_simulator");
                 }
@@ -257,7 +255,7 @@ fn initialize_backends(config: &Config) -> Result<BackendRegistry> {
             }
         }
     }
-    
+
     // Initialize IQM backend if enabled
     if config.backends.iqm_garnet.enabled {
         match IqmBackend::new(&config.backends.iqm_garnet) {
@@ -271,13 +269,13 @@ fn initialize_backends(config: &Config) -> Result<BackendRegistry> {
             }
         }
     }
-    
+
     if registry.is_empty() {
         error!("No backends available. At least one backend must be enabled.");
         return Err(crate::error::Error::Config(
             "No backends available. At least one backend must be enabled.".to_string(),
         ));
     }
-    
+
     Ok(registry)
 }

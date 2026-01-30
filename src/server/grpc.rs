@@ -19,10 +19,9 @@ use crate::config::ServerConfig;
 use crate::error::{Error, Result};
 use crate::proto::quantum::backend::v1::{
     quantum_backend_server::{QuantumBackend, QuantumBackendServer},
-    ExecutePulseRequest, ExecutePulseResponse, GetHardwareInfoRequest,
-    GetHardwareInfoResponse, HealthCheckRequest, HealthCheckResponse,
-    HardwareInfo, MeasurementResult as ProtoMeasurementResult,
-    BitstringCounts, HealthStatus as ProtoHealthStatus,
+    BitstringCounts, ExecutePulseRequest, ExecutePulseResponse, GetHardwareInfoRequest,
+    GetHardwareInfoResponse, HardwareInfo, HealthCheckRequest, HealthCheckResponse,
+    HealthStatus as ProtoHealthStatus, MeasurementResult as ProtoMeasurementResult,
 };
 
 /// gRPC server for the QuantumBackend service.
@@ -36,21 +35,21 @@ impl GrpcServer {
     pub fn new(state: Arc<ServerState>) -> Self {
         Self { state }
     }
-    
+
     /// Start the gRPC server.
     pub async fn serve(self, config: &ServerConfig) -> Result<()> {
         let addr: SocketAddr = format!("{}:{}", config.host, config.grpc_port)
             .parse()
             .map_err(|e| Error::Config(format!("Invalid gRPC address: {}", e)))?;
-        
+
         info!(address = %addr, "Starting gRPC server");
-        
+
         let service = QuantumBackendService {
             state: self.state.clone(),
         };
-        
+
         let mut shutdown_rx = self.state.shutdown_receiver();
-        
+
         tonic::transport::Server::builder()
             .add_service(QuantumBackendServer::new(service))
             .serve_with_shutdown(addr, async {
@@ -59,7 +58,7 @@ impl GrpcServer {
             })
             .await
             .map_err(|e| Error::Server(format!("gRPC server error: {}", e)))?;
-        
+
         Ok(())
     }
 }
@@ -79,22 +78,24 @@ impl QuantumBackend for QuantumBackendService {
     ) -> std::result::Result<Response<ExecutePulseResponse>, Status> {
         let req = request.into_inner();
         let request_id = Uuid::new_v4().to_string();
-        
+
         debug!(
             request_id = %request_id,
             pulse_id = %req.pulse_id,
             backend = ?req.backend_name,
             "Received ExecutePulse request"
         );
-        
+
         // Get backend
-        let backend = self.state.registry
+        let backend = self
+            .state
+            .registry
             .get_or_default(req.backend_name.as_deref())
             .map_err(|e| {
                 error!(error = %e, "Backend not found");
                 Status::not_found(e.to_string())
             })?;
-        
+
         // Convert request
         let backend_request = BackendRequest {
             pulse_id: req.pulse_id.clone(),
@@ -108,59 +109,67 @@ impl QuantumBackend for QuantumBackendService {
             return_state_vector: req.return_state_vector,
             include_noise: req.include_noise,
         };
-        
+
         // Execute
         let result = backend.execute_pulse(backend_request).await.map_err(|e| {
             error!(error = %e, "Pulse execution failed");
             Status::from(Error::from(e))
         })?;
-        
+
         // Convert result
         let response = ExecutePulseResponse {
             request_id,
             pulse_id: req.pulse_id,
             result: Some(ProtoMeasurementResult {
                 bitstring_counts: Some(BitstringCounts {
-                    counts: result.bitstring_counts.into_iter()
+                    counts: result
+                        .bitstring_counts
+                        .into_iter()
                         .map(|(k, v)| (k, v as i64))
                         .collect(),
                 }),
                 total_shots: result.total_shots,
                 successful_shots: result.successful_shots,
                 fidelity_estimate: result.fidelity_estimate,
-                state_vector_real: result.state_vector.as_ref()
+                state_vector_real: result
+                    .state_vector
+                    .as_ref()
                     .map(|sv| sv.iter().map(|(r, _)| *r).collect())
                     .unwrap_or_default(),
-                state_vector_imag: result.state_vector.as_ref()
+                state_vector_imag: result
+                    .state_vector
+                    .as_ref()
                     .map(|sv| sv.iter().map(|(_, i)| *i).collect())
                     .unwrap_or_default(),
             }),
             error: None,
         };
-        
+
         Ok(Response::new(response))
     }
-    
+
     #[instrument(skip(self, request), fields(backend))]
     async fn get_hardware_info(
         &self,
         request: Request<GetHardwareInfoRequest>,
     ) -> std::result::Result<Response<GetHardwareInfoResponse>, Status> {
         let req = request.into_inner();
-        
+
         debug!(backend = ?req.backend_name, "Received GetHardwareInfo request");
-        
+
         // Get backend
-        let backend = self.state.registry
+        let backend = self
+            .state
+            .registry
             .get_or_default(req.backend_name.as_deref())
             .map_err(|e| Status::not_found(e.to_string()))?;
-        
+
         // Get info
         let info = backend.get_hardware_info().await.map_err(|e| {
             error!(error = %e, "Failed to get hardware info");
             Status::from(Error::from(e))
         })?;
-        
+
         let response = GetHardwareInfoResponse {
             info: Some(HardwareInfo {
                 name: info.name,
@@ -177,54 +186,55 @@ impl QuantumBackend for QuantumBackendService {
                 software_version: info.software_version,
             }),
         };
-        
+
         Ok(Response::new(response))
     }
-    
+
     #[instrument(skip(self, request), fields(backend))]
     async fn health_check(
         &self,
         request: Request<HealthCheckRequest>,
     ) -> std::result::Result<Response<HealthCheckResponse>, Status> {
         let req = request.into_inner();
-        
+
         debug!(backend = ?req.backend_name, "Received HealthCheck request");
-        
+
         // If specific backend requested, check it
         if let Some(ref name) = req.backend_name {
-            let backend = self.state.registry.get(name)
+            let backend = self
+                .state
+                .registry
+                .get(name)
                 .map_err(|e| Status::not_found(e.to_string()))?;
-            
+
             let status = backend.health_check().await.map_err(|e| {
                 error!(error = %e, "Health check failed");
                 Status::from(Error::from(e))
             })?;
-            
+
             let proto_status = match status {
                 crate::backend::HealthStatus::Healthy => ProtoHealthStatus::Healthy,
                 crate::backend::HealthStatus::Degraded => ProtoHealthStatus::Degraded,
                 crate::backend::HealthStatus::Unavailable => ProtoHealthStatus::Unavailable,
             };
-            
+
             return Ok(Response::new(HealthCheckResponse {
                 status: proto_status as i32,
                 message: String::new(),
                 backends: HashMap::new(),
             }));
         }
-        
+
         // Check all backends
         let mut backends = HashMap::new();
         let mut overall_status = ProtoHealthStatus::Healthy;
-        
+
         for name in self.state.registry.list() {
             if let Ok(backend) = self.state.registry.get(&name) {
                 match backend.health_check().await {
                     Ok(status) => {
                         let proto_status = match status {
-                            crate::backend::HealthStatus::Healthy => {
-                                ProtoHealthStatus::Healthy
-                            }
+                            crate::backend::HealthStatus::Healthy => ProtoHealthStatus::Healthy,
                             crate::backend::HealthStatus::Degraded => {
                                 if overall_status == ProtoHealthStatus::Healthy {
                                     overall_status = ProtoHealthStatus::Degraded;
@@ -246,7 +256,7 @@ impl QuantumBackend for QuantumBackendService {
                 }
             }
         }
-        
+
         Ok(Response::new(HealthCheckResponse {
             status: overall_status as i32,
             message: String::new(),
@@ -259,7 +269,7 @@ impl QuantumBackend for QuantumBackendService {
 mod tests {
     use super::*;
     use crate::backend::BackendRegistry;
-    
+
     #[tokio::test]
     async fn test_grpc_server_creation() {
         let registry = Arc::new(BackendRegistry::default());

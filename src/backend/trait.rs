@@ -123,22 +123,22 @@ pub struct ExecutePulseRequest {
 pub trait QuantumBackend: Send + Sync {
     /// Get the backend name.
     fn name(&self) -> &str;
-    
+
     /// Get the backend type.
     fn backend_type(&self) -> BackendType;
-    
+
     /// Execute a pulse and return measurement results.
     async fn execute_pulse(
         &self,
         request: ExecutePulseRequest,
     ) -> Result<MeasurementResult, BackendError>;
-    
+
     /// Get hardware information.
     async fn get_hardware_info(&self) -> Result<HardwareInfo, BackendError>;
-    
+
     /// Check backend health.
     async fn health_check(&self) -> Result<HealthStatus, BackendError>;
-    
+
     /// Get resource limits.
     fn resource_limits(&self) -> &ResourceLimits;
 }

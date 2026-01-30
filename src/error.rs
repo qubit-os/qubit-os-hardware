@@ -127,7 +127,11 @@ pub enum ValidationError {
     /// Calibration mismatch
     CalibrationMismatch { expected: String, actual: String },
     /// Resource limit exceeded
-    ResourceLimit { resource: String, limit: u64, requested: u64 },
+    ResourceLimit {
+        resource: String,
+        limit: u64,
+        requested: u64,
+    },
 }
 
 impl fmt::Display for ValidationError {
@@ -140,10 +144,22 @@ impl fmt::Display for ValidationError {
                 write!(f, "Physics constraint violated: {}", msg)
             }
             ValidationError::CalibrationMismatch { expected, actual } => {
-                write!(f, "Calibration mismatch: expected {}, got {}", expected, actual)
+                write!(
+                    f,
+                    "Calibration mismatch: expected {}, got {}",
+                    expected, actual
+                )
             }
-            ValidationError::ResourceLimit { resource, limit, requested } => {
-                write!(f, "Resource limit exceeded for {}: limit={}, requested={}", resource, limit, requested)
+            ValidationError::ResourceLimit {
+                resource,
+                limit,
+                requested,
+            } => {
+                write!(
+                    f,
+                    "Resource limit exceeded for {}: limit={}, requested={}",
+                    resource, limit, requested
+                )
             }
         }
     }
