@@ -2,6 +2,7 @@
 name = "qubit-os-hardware"
 version = "0.1.0"
 edition = "2021"
+rust-version = "1.80"
 authors = ["QubitOS Contributors"]
 description = "Hardware Abstraction Layer for QubitOS quantum control kernel"
 license = "Apache-2.0"
@@ -17,6 +18,7 @@ tokio = { version = "1.35", features = ["full"] }
 tonic = "0.11"
 prost = "0.12"
 prost-types = "0.12"
+http = "0.2"
 
 # REST API
 axum = "0.7"
