@@ -53,9 +53,6 @@ jobs:
       
       - name: Run tests
         run: cargo test --all-features
-      
-      - name: Run tests (release)
-        run: cargo test --release --all-features
 
   build:
     name: Build
@@ -66,9 +63,6 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       
       - uses: Swatinem/rust-cache@v2
-      
-      - name: Build (debug)
-        run: cargo build
       
       - name: Build (release)
         run: cargo build --release
