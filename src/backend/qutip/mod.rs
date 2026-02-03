@@ -160,10 +160,12 @@ impl QutipBackend {
             .map_err(|e| BackendError::Python(format!("Failed to import numpy: {}", e)))?;
 
         // Convert envelopes to numpy arrays (PyO3 0.25: PyList::new returns Result)
-        let i_env = PyList::new(py, &request.i_envelope)
-            .map_err(|e| BackendError::Python(format!("Failed to create I envelope list: {}", e)))?;
-        let q_env = PyList::new(py, &request.q_envelope)
-            .map_err(|e| BackendError::Python(format!("Failed to create Q envelope list: {}", e)))?;
+        let i_env = PyList::new(py, &request.i_envelope).map_err(|e| {
+            BackendError::Python(format!("Failed to create I envelope list: {}", e))
+        })?;
+        let q_env = PyList::new(py, &request.q_envelope).map_err(|e| {
+            BackendError::Python(format!("Failed to create Q envelope list: {}", e))
+        })?;
 
         let i_array = numpy
             .call_method1("array", (&i_env,))
@@ -202,14 +204,17 @@ impl QutipBackend {
             .map_err(|e| BackendError::Python(format!("Failed to set duration_ns: {}", e)))?;
 
         let target_qubits: Vec<i32> = request.target_qubits.iter().map(|&x| x as i32).collect();
-        let target_list = PyList::new(py, &target_qubits)
-            .map_err(|e| BackendError::Python(format!("Failed to create target_qubits list: {}", e)))?;
-        globals.set_item("target_qubits", &target_list).map_err(|e| {
-            BackendError::Python(format!("Failed to set target_qubits: {}", e))
+        let target_list = PyList::new(py, &target_qubits).map_err(|e| {
+            BackendError::Python(format!("Failed to create target_qubits list: {}", e))
         })?;
         globals
+            .set_item("target_qubits", &target_list)
+            .map_err(|e| BackendError::Python(format!("Failed to set target_qubits: {}", e)))?;
+        globals
             .set_item("return_state_vector", request.return_state_vector)
-            .map_err(|e| BackendError::Python(format!("Failed to set return_state_vector: {}", e)))?;
+            .map_err(|e| {
+                BackendError::Python(format!("Failed to set return_state_vector: {}", e))
+            })?;
 
         // Python simulation code - fixed for QuTiP 5.x dimension handling
         // Note: Functions defined here can access module-level variables because
@@ -309,10 +314,11 @@ simulation_result = {
         // Use the same dict for both globals and locals so closures can access variables
         let code_cstr = CString::new(code)
             .map_err(|e| BackendError::Python(format!("Failed to create CString: {}", e)))?;
-        py.run(&code_cstr, Some(&globals), Some(&globals)).map_err(|e| {
-            error!("Python simulation failed: {}", e);
-            BackendError::Python(format!("Simulation failed: {}", e))
-        })?;
+        py.run(&code_cstr, Some(&globals), Some(&globals))
+            .map_err(|e| {
+                error!("Python simulation failed: {}", e);
+                BackendError::Python(format!("Simulation failed: {}", e))
+            })?;
 
         // Extract results
         let result = globals

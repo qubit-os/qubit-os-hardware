@@ -153,10 +153,7 @@ pub mod quantum {
                         std::task::Poll::Ready(Ok(()))
                     }
 
-                    fn call(
-                        &mut self,
-                        _req: http::Request<tonic::body::BoxBody>,
-                    ) -> Self::Future {
+                    fn call(&mut self, _req: http::Request<tonic::body::BoxBody>) -> Self::Future {
                         Box::pin(async move {
                             Ok(http::Response::builder()
                                 .status(501)

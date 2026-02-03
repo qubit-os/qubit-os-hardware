@@ -131,7 +131,10 @@ pub async fn run_servers(config: &ServerConfig, registry: Arc<BackendRegistry>) 
     }
 
     // Ensure shutdown completes within timeout
-    info!(timeout_secs = config.shutdown_timeout_sec, "Waiting for shutdown to complete");
+    info!(
+        timeout_secs = config.shutdown_timeout_sec,
+        "Waiting for shutdown to complete"
+    );
 
     // The servers already handle graceful shutdown via the shutdown_rx channel.
     // This timeout ensures we don't hang forever if something goes wrong.

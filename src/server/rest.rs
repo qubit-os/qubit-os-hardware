@@ -22,13 +22,13 @@
 use std::net::SocketAddr;
 use std::sync::Arc;
 
+use axum::http::{header::HeaderName, Method};
 use axum::{
     extract::{Path, State},
     http::StatusCode,
     routing::{get, post},
     Json, Router,
 };
-use axum::http::{header::HeaderName, Method};
 use serde::{Deserialize, Serialize};
 use tower_http::cors::{Any, CorsLayer};
 use tower_http::trace::TraceLayer;
@@ -73,7 +73,7 @@ impl RestServer {
             .layer(cors_layer)
             .layer(TraceLayer::new_for_http());
 
-        // Note: Tower's RateLimitLayer doesn't work with axum's Router directly 
+        // Note: Tower's RateLimitLayer doesn't work with axum's Router directly
         // because RateLimit<S> doesn't implement Clone. For production rate limiting,
         // use a reverse proxy (nginx, envoy) or the `governor` crate with tower integration.
         if config.rate_limit.enabled {
@@ -142,18 +142,12 @@ fn build_cors_layer(config: &CorsConfig) -> CorsLayer {
 
 /// Parse HTTP methods from strings.
 fn parse_methods(methods: &[String]) -> Vec<Method> {
-    methods
-        .iter()
-        .filter_map(|s| s.parse().ok())
-        .collect()
+    methods.iter().filter_map(|s| s.parse().ok()).collect()
 }
 
 /// Parse header names from strings.
 fn parse_headers(headers: &[String]) -> Vec<HeaderName> {
-    headers
-        .iter()
-        .filter_map(|s| s.parse().ok())
-        .collect()
+    headers.iter().filter_map(|s| s.parse().ok()).collect()
 }
 
 /// Sanitize error message for external response.

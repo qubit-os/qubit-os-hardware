@@ -71,11 +71,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     // Configure tonic-build
+    // Note: compile_protos is the current non-deprecated method name
     tonic_build::configure()
         .build_server(true)
         .build_client(true)
         .out_dir("src/proto/generated")
-        .compile(
+        .compile_protos(
             &proto_paths
                 .iter()
                 .map(|p| p.to_str().unwrap())

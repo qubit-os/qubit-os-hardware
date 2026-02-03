@@ -95,7 +95,8 @@ impl Config {
             self.server.cors.allow_all = val.to_lowercase() == "true" || val == "1";
         }
         if let Ok(val) = env::var("QUBITOS_CORS_ALLOWED_ORIGINS") {
-            self.server.cors.allowed_origins = val.split(',').map(|s| s.trim().to_string()).collect();
+            self.server.cors.allowed_origins =
+                val.split(',').map(|s| s.trim().to_string()).collect();
         }
 
         // IQM backend
