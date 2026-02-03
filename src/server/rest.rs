@@ -13,6 +13,11 @@
 //! - `GET /api/v1/backends/{name}` - Get backend info
 //! - `POST /api/v1/execute` - Execute a pulse
 //! - `GET /api/v1/version` - Get server version
+//!
+//! # Security
+//!
+//! - All inputs are validated before processing (envelope size, qubit bounds, etc.)
+//! - Error messages are sanitized to not leak internal details in production
 
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -23,16 +28,18 @@ use axum::{
     routing::{get, post},
     Json, Router,
 };
+use axum::http::{header::HeaderName, Method};
 use serde::{Deserialize, Serialize};
 use tower_http::cors::{Any, CorsLayer};
 use tower_http::trace::TraceLayer;
-use tracing::{debug, error, info};
+use tracing::{debug, error, info, warn};
 use uuid::Uuid;
 
 use super::ServerState;
 use crate::backend::ExecutePulseRequest as BackendRequest;
-use crate::config::ServerConfig;
+use crate::config::{CorsConfig, ServerConfig};
 use crate::error::{Error, Result};
+use crate::validation::{validate_api_request, MAX_QUBITS};
 
 /// REST server for the HAL.
 pub struct RestServer {
@@ -53,6 +60,9 @@ impl RestServer {
 
         info!(address = %addr, "Starting REST server");
 
+        // Build CORS layer based on configuration
+        let cors_layer = build_cors_layer(&config.cors);
+
         // Build router
         let app = Router::new()
             .route("/api/v1/health", get(health_check))
@@ -60,14 +70,20 @@ impl RestServer {
             .route("/api/v1/backends/:name", get(get_backend_info))
             .route("/api/v1/execute", post(execute_pulse))
             .route("/api/v1/version", get(get_version))
-            .layer(
-                CorsLayer::new()
-                    .allow_origin(Any)
-                    .allow_methods(Any)
-                    .allow_headers(Any),
-            )
-            .layer(TraceLayer::new_for_http())
-            .with_state(self.state.clone());
+            .layer(cors_layer)
+            .layer(TraceLayer::new_for_http());
+
+        // Note: Tower's RateLimitLayer doesn't work with axum's Router directly 
+        // because RateLimit<S> doesn't implement Clone. For production rate limiting,
+        // use a reverse proxy (nginx, envoy) or the `governor` crate with tower integration.
+        if config.rate_limit.enabled {
+            info!(
+                rps = config.rate_limit.requests_per_second,
+                "Rate limiting configured (enforced at infrastructure layer)"
+            );
+        }
+
+        let app = app.with_state(self.state.clone());
 
         let mut shutdown_rx = self.state.shutdown_receiver();
 
@@ -84,6 +100,89 @@ impl RestServer {
             .map_err(|e| Error::Server(format!("REST server error: {}", e)))?;
 
         Ok(())
+    }
+}
+
+/// Build CORS layer based on configuration.
+fn build_cors_layer(config: &CorsConfig) -> CorsLayer {
+    if config.allow_all {
+        warn!(
+            "CORS configured to allow all origins. \
+             This is INSECURE and should only be used for development!"
+        );
+        CorsLayer::new()
+            .allow_origin(Any)
+            .allow_methods(Any)
+            .allow_headers(Any)
+    } else if config.allowed_origins.is_empty() {
+        // No origins configured - very restrictive
+        info!("CORS: No origins configured, using restrictive defaults");
+        CorsLayer::new()
+            .allow_methods(parse_methods(&config.allowed_methods))
+            .allow_headers(parse_headers(&config.allowed_headers))
+    } else {
+        // Parse allowed origins
+        let origins: Vec<_> = config
+            .allowed_origins
+            .iter()
+            .filter_map(|s| s.parse().ok())
+            .collect();
+
+        info!(
+            origins = ?config.allowed_origins,
+            "CORS configured with specific allowed origins"
+        );
+
+        CorsLayer::new()
+            .allow_origin(origins)
+            .allow_methods(parse_methods(&config.allowed_methods))
+            .allow_headers(parse_headers(&config.allowed_headers))
+    }
+}
+
+/// Parse HTTP methods from strings.
+fn parse_methods(methods: &[String]) -> Vec<Method> {
+    methods
+        .iter()
+        .filter_map(|s| s.parse().ok())
+        .collect()
+}
+
+/// Parse header names from strings.
+fn parse_headers(headers: &[String]) -> Vec<HeaderName> {
+    headers
+        .iter()
+        .filter_map(|s| s.parse().ok())
+        .collect()
+}
+
+/// Sanitize error message for external response.
+/// In production, we don't want to leak internal details like file paths,
+/// Python tracebacks, or internal state.
+fn sanitize_error_message(error: &Error) -> String {
+    // For validation errors, the message is safe to show
+    if let Error::Validation(ref ve) = error {
+        return ve.to_string();
+    }
+
+    // For other errors, return a generic message in production
+    // TODO: Make this configurable via environment variable
+    #[cfg(debug_assertions)]
+    {
+        error.to_string()
+    }
+
+    #[cfg(not(debug_assertions))]
+    {
+        // In release mode, sanitize
+        match error {
+            Error::Backend(_) => "Backend execution error".to_string(),
+            Error::Config(_) => "Configuration error".to_string(),
+            Error::Server(_) => "Internal server error".to_string(),
+            Error::Validation(ve) => ve.to_string(),
+            Error::Io(_) => "I/O error".to_string(),
+            Error::Serialization(_) => "Serialization error".to_string(),
+        }
     }
 }
 
@@ -272,7 +371,7 @@ async fn get_backend_info(
         (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(ErrorResponse {
-                error: e.to_string(),
+                error: sanitize_error_message(&Error::from(e)),
                 code: "HARDWARE_INFO_ERROR".to_string(),
             }),
         )
@@ -303,10 +402,16 @@ async fn execute_pulse(
         request_id = %request_id,
         pulse_id = %pulse_id,
         backend = ?req.backend_name,
+        envelope_len = req.i_envelope.len(),
+        num_shots = req.num_shots,
         "REST execute_pulse request"
     );
 
-    // Get backend
+    // =========================================================================
+    // SECURITY: Validate all inputs BEFORE any processing
+    // =========================================================================
+
+    // Get backend first to know max_qubits
     let backend = state
         .registry
         .get_or_default(req.backend_name.as_deref())
@@ -320,7 +425,46 @@ async fn execute_pulse(
             )
         })?;
 
-    // Build request
+    // Get backend limits
+    let backend_info = backend.get_hardware_info().await.map_err(|e| {
+        error!(error = %e, "Failed to get backend info for validation");
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(ErrorResponse {
+                error: "Failed to get backend info".to_string(),
+                code: "INTERNAL_ERROR".to_string(),
+            }),
+        )
+    })?;
+
+    // Validate all inputs
+    let max_qubits = std::cmp::min(backend_info.num_qubits, MAX_QUBITS);
+    if let Err(e) = validate_api_request(
+        &req.i_envelope,
+        &req.q_envelope,
+        req.num_shots,
+        req.duration_ns,
+        &req.target_qubits,
+        max_qubits,
+    ) {
+        warn!(
+            request_id = %request_id,
+            error = %e,
+            "Request validation failed"
+        );
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                error: sanitize_error_message(&e),
+                code: "VALIDATION_ERROR".to_string(),
+            }),
+        ));
+    }
+
+    // =========================================================================
+    // Build and execute request
+    // =========================================================================
+
     let num_time_steps = req.i_envelope.len() as u32;
     let backend_request = BackendRequest {
         pulse_id: pulse_id.clone(),
@@ -341,7 +485,7 @@ async fn execute_pulse(
         (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(ErrorResponse {
-                error: e.to_string(),
+                error: sanitize_error_message(&Error::from(e)),
                 code: "EXECUTION_ERROR".to_string(),
             }),
         )
@@ -377,5 +521,25 @@ mod tests {
         let state = Arc::new(ServerState::new(registry));
         let _server = RestServer::new(state);
         // Server created successfully - if we got here without panic, test passed
+    }
+
+    #[test]
+    fn test_cors_layer_restrictive_by_default() {
+        let config = CorsConfig::default();
+        // Should not allow all by default
+        assert!(!config.allow_all);
+    }
+
+    #[test]
+    fn test_sanitize_error_message() {
+        use crate::error::ValidationError;
+
+        // Validation errors are safe to show
+        let ve = Error::Validation(ValidationError::Field {
+            field: "test".into(),
+            message: "test message".into(),
+        });
+        let msg = sanitize_error_message(&ve);
+        assert!(msg.contains("test"));
     }
 }

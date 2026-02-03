@@ -7,8 +7,9 @@
 //! various quantum backends:
 //!
 //! - [`qutip::QutipBackend`]: Local QuTiP simulator
-//! - [`iqm::IqmBackend`]: IQM Garnet hardware backend
+//! - [`iqm::IqmBackend`]: IQM Garnet hardware backend (requires `iqm` feature)
 
+#[cfg(feature = "iqm")]
 pub mod iqm;
 pub mod qutip;
 pub mod registry;

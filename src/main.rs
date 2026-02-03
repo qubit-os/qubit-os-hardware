@@ -30,10 +30,13 @@ use tracing::{error, info};
 use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 
 use qubit_os_hardware::{
-    backend::{iqm::IqmBackend, qutip::QutipBackend, BackendRegistry},
+    backend::{qutip::QutipBackend, BackendRegistry},
     config::Config,
     server, Error, Result, VERSION,
 };
+
+#[cfg(feature = "iqm")]
+use qubit_os_hardware::backend::iqm::IqmBackend;
 
 /// QubitOS Hardware Abstraction Layer Server
 #[derive(Parser)]
@@ -256,7 +259,8 @@ fn initialize_backends(config: &Config) -> Result<BackendRegistry> {
         }
     }
 
-    // Initialize IQM backend if enabled
+    // Initialize IQM backend if enabled (only when iqm feature is enabled)
+    #[cfg(feature = "iqm")]
     if config.backends.iqm_garnet.enabled {
         match IqmBackend::new(&config.backends.iqm_garnet) {
             Ok(backend) => {

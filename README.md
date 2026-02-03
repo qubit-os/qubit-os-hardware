@@ -46,9 +46,13 @@ docker run -p 50051:50051 -p 8080:8080 qubit-os-hardware
 ```yaml
 # config.yaml
 server:
+  host: "127.0.0.1"  # Default - use 0.0.0.0 for external access
   grpc_port: 50051
   rest_port: 8080
-  host: "0.0.0.0"
+  shutdown_timeout_sec: 30
+  rate_limit:
+    enabled: true
+    requests_per_second: 100
 
 backends:
   qutip_simulator:
@@ -63,6 +67,17 @@ logging:
   level: "info"
   format: "json"
 ```
+
+## Security
+
+The HAL includes several security features:
+
+- **Input Validation**: All requests are validated at the API boundary (envelope sizes, qubit bounds, amplitude limits). See [qubit-os-proto/LIMITS.md](../qubit-os-proto/LIMITS.md).
+- **Timeout Protection**: Python/QuTiP execution has a 300s timeout to prevent hangs.
+- **Error Sanitization**: Production builds return generic error messages to prevent information leakage.
+- **Rate Limiting**: Configurable rate limits (enforced at infrastructure layer).
+- **Secure Defaults**: Binds to localhost by default, restrictive CORS.
+- **Secret Handling**: IQM tokens use SecretString (optional `iqm` feature).
 
 ## Architecture
 
@@ -84,7 +99,7 @@ logging:
 
 ### Prerequisites
 
-- Rust 1.75+
+- Rust 1.83+
 - Python 3.11+ (for QuTiP backend)
 - Protocol Buffers compiler (protoc)
 

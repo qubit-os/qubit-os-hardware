@@ -10,23 +10,29 @@ repository = "https://github.com/qubit-os/qubit-os-hardware"
 keywords = ["quantum", "computing", "simulation", "pulse", "control"]
 categories = ["science", "simulation"]
 
+[features]
+default = []
+iqm = ["dep:reqwest", "dep:secrecy"]
+
 [dependencies]
 # Async runtime
 tokio = { version = "1.35", features = ["full"] }
 
 # gRPC
-tonic = "0.11"
-prost = "0.12"
-prost-types = "0.12"
-http = "0.2"
+tonic = "0.12"
+prost = "0.13"
+prost-types = "0.13"
 
 # REST API
 axum = "0.7"
-tower = "0.4"
-tower-http = { version = "0.5", features = ["cors", "trace"] }
+tower = { version = "0.5", features = ["limit"] }
+tower-http = { version = "0.6", features = ["cors", "trace"] }
+
+# HTTP types (needed for tower::Service impl in proto stubs)
+http = "1.1"
 
 # Python interop (for QuTiP)
-pyo3 = { version = "0.20", features = ["auto-initialize"] }
+pyo3 = { version = "0.25", features = ["auto-initialize"] }
 
 # Serialization
 serde = { version = "1.0", features = ["derive"] }
@@ -38,34 +44,31 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 
 # Error handling
-anyhow = "1.0"
-thiserror = "1.0"
+thiserror = "2.0"
 
 # Utilities
 uuid = { version = "1.7", features = ["v4", "serde"] }
 chrono = { version = "0.4", features = ["serde"] }
 async-trait = "0.1"
-futures = "0.3"
 parking_lot = "0.12"
 
-# HTTP client (for IQM)
-reqwest = { version = "0.11", features = ["json", "rustls-tls"] }
+# HTTP client (for IQM) - optional
+reqwest = { version = "0.12", features = ["json", "rustls-tls"], optional = true }
+
+# Secrets handling (for IQM auth tokens) - optional
+secrecy = { version = "0.10", features = ["serde"], optional = true }
 
 # CLI
 clap = { version = "4.4", features = ["derive", "env"] }
 
-# Config
-config = "0.14"
-dotenvy = "0.15"
-
 [build-dependencies]
-tonic-build = "0.11"
+tonic-build = "0.12"
 
 [dev-dependencies]
 tokio-test = "0.4"
 tempfile = "3.10"
 assert_matches = "1.5"
-mockall = "0.12"
+mockall = "0.13"
 
 [[bin]]
 name = "qubit-os-hal"

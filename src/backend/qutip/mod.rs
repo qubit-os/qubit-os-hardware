@@ -19,12 +19,19 @@
 //! 2. Run mesolve() for time evolution
 //! 3. Compute measurement probabilities
 //! 4. Sample measurement outcomes
+//!
+//! # Security
+//!
+//! - Python execution is wrapped with a timeout to prevent infinite hangs
+//! - Default timeout is 300 seconds, configurable via ServerConfig
 
 use async_trait::async_trait;
 use pyo3::prelude::*;
 use pyo3::types::{PyDict, PyList};
 use std::collections::HashMap;
+use std::ffi::CString;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::Duration;
 use tracing::{debug, error, info, warn};
 
 use super::{BackendType, QuantumBackend};
@@ -34,6 +41,9 @@ use crate::error::BackendError;
 use super::r#trait::{
     ExecutePulseRequest, HardwareInfo, HealthStatus, MeasurementResult, ResultQuality,
 };
+
+/// Default timeout for Python execution in seconds.
+const DEFAULT_PYTHON_TIMEOUT_SECS: u64 = 300;
 
 /// Static flag to track if Python/QuTiP is available
 static QUTIP_AVAILABLE: AtomicBool = AtomicBool::new(false);
@@ -52,6 +62,9 @@ pub struct QutipBackend {
 
     /// Whether to return state vectors
     supports_state_vector: bool,
+
+    /// Timeout for Python execution
+    timeout: Duration,
 }
 
 impl QutipBackend {
@@ -75,12 +88,19 @@ impl QutipBackend {
                 ..Default::default()
             },
             supports_state_vector: true,
+            timeout: Duration::from_secs(DEFAULT_PYTHON_TIMEOUT_SECS),
         })
     }
 
     /// Create with default configuration.
     pub fn new_default() -> Result<Self, BackendError> {
         Self::new(&QutipConfig::default())
+    }
+
+    /// Set execution timeout.
+    pub fn with_timeout(mut self, timeout: Duration) -> Self {
+        self.timeout = timeout;
+        self
     }
 
     /// Check if QuTiP is available.
@@ -139,72 +159,75 @@ impl QutipBackend {
             .import("numpy")
             .map_err(|e| BackendError::Python(format!("Failed to import numpy: {}", e)))?;
 
-        // Convert envelopes to numpy arrays
-        let i_env = PyList::new(py, &request.i_envelope);
-        let q_env = PyList::new(py, &request.q_envelope);
+        // Convert envelopes to numpy arrays (PyO3 0.25: PyList::new returns Result)
+        let i_env = PyList::new(py, &request.i_envelope)
+            .map_err(|e| BackendError::Python(format!("Failed to create I envelope list: {}", e)))?;
+        let q_env = PyList::new(py, &request.q_envelope)
+            .map_err(|e| BackendError::Python(format!("Failed to create Q envelope list: {}", e)))?;
 
         let i_array = numpy
-            .call_method1("array", (i_env,))
+            .call_method1("array", (&i_env,))
             .map_err(|e| BackendError::Python(format!("Failed to create I numpy array: {}", e)))?;
         let q_array = numpy
-            .call_method1("array", (q_env,))
+            .call_method1("array", (&q_env,))
             .map_err(|e| BackendError::Python(format!("Failed to create Q numpy array: {}", e)))?;
 
-        // Build the simulation code
-        let locals = PyDict::new(py);
-        locals
+        // Build the simulation context (PyO3 0.25: PyDict::new returns Bound<PyDict>)
+        // IMPORTANT: Use the same dict for both globals and locals to allow closures
+        // to access module-level variables defined in the exec'd code
+        let globals = PyDict::new(py);
+        globals
             .set_item("qutip", qutip)
-            .map_err(|e| BackendError::Python(format!("Failed to set qutip local: {}", e)))?;
-        locals
+            .map_err(|e| BackendError::Python(format!("Failed to set qutip: {}", e)))?;
+        globals
             .set_item("np", numpy)
-            .map_err(|e| BackendError::Python(format!("Failed to set numpy local: {}", e)))?;
-        locals
+            .map_err(|e| BackendError::Python(format!("Failed to set numpy: {}", e)))?;
+        globals
             .set_item("i_envelope", i_array)
-            .map_err(|e| BackendError::Python(format!("Failed to set i_envelope local: {}", e)))?;
-        locals
+            .map_err(|e| BackendError::Python(format!("Failed to set i_envelope: {}", e)))?;
+        globals
             .set_item("q_envelope", q_array)
-            .map_err(|e| BackendError::Python(format!("Failed to set q_envelope local: {}", e)))?;
-        locals
+            .map_err(|e| BackendError::Python(format!("Failed to set q_envelope: {}", e)))?;
+        globals
             .set_item("num_qubits", self.num_qubits)
-            .map_err(|e| BackendError::Python(format!("Failed to set num_qubits local: {}", e)))?;
-        locals
+            .map_err(|e| BackendError::Python(format!("Failed to set num_qubits: {}", e)))?;
+        globals
             .set_item("num_shots", request.num_shots)
-            .map_err(|e| BackendError::Python(format!("Failed to set num_shots local: {}", e)))?;
-        locals
+            .map_err(|e| BackendError::Python(format!("Failed to set num_shots: {}", e)))?;
+        globals
             .set_item("num_time_steps", request.num_time_steps)
-            .map_err(|e| {
-                BackendError::Python(format!("Failed to set num_time_steps local: {}", e))
-            })?;
-        locals
+            .map_err(|e| BackendError::Python(format!("Failed to set num_time_steps: {}", e)))?;
+        globals
             .set_item("duration_ns", request.duration_ns)
-            .map_err(|e| BackendError::Python(format!("Failed to set duration_ns local: {}", e)))?;
+            .map_err(|e| BackendError::Python(format!("Failed to set duration_ns: {}", e)))?;
 
         let target_qubits: Vec<i32> = request.target_qubits.iter().map(|&x| x as i32).collect();
-        let target_list = PyList::new(py, &target_qubits);
-        locals.set_item("target_qubits", target_list).map_err(|e| {
-            BackendError::Python(format!("Failed to set target_qubits local: {}", e))
+        let target_list = PyList::new(py, &target_qubits)
+            .map_err(|e| BackendError::Python(format!("Failed to create target_qubits list: {}", e)))?;
+        globals.set_item("target_qubits", &target_list).map_err(|e| {
+            BackendError::Python(format!("Failed to set target_qubits: {}", e))
         })?;
-        locals
+        globals
             .set_item("return_state_vector", request.return_state_vector)
-            .map_err(|e| {
-                BackendError::Python(format!("Failed to set return_state_vector local: {}", e))
-            })?;
+            .map_err(|e| BackendError::Python(format!("Failed to set return_state_vector: {}", e)))?;
 
-        // Python simulation code
+        // Python simulation code - fixed for QuTiP 5.x dimension handling
+        // Note: Functions defined here can access module-level variables because
+        // we use the same dict for both globals and locals
         let code = r#"
 import numpy as np
 import qutip
 
-# Build operators
+# Build operators with proper tensor structure to ensure consistent dimensions
 dim = 2 ** num_qubits
-identity = qutip.qeye(dim)
 
-# Build drift Hamiltonian (just identity for now - can be extended)
-H0 = 0.0 * identity
+# Build identity operators list for tensor products
+identity_list = [qutip.qeye(2)] * num_qubits
+
+# Build drift Hamiltonian with proper tensor dimensions
+H0 = 0.0 * qutip.tensor(identity_list)
 
 # Build control Hamiltonians for target qubits
-# For single qubit: sigma_x and sigma_y
-# For two qubits: tensor products
 Hx_list = []
 Hy_list = []
 
@@ -219,32 +242,30 @@ for q in target_qubits:
     Hy = qutip.tensor(ops)
     Hy_list.append(Hy)
 
-# Time array (in ns, convert to appropriate units)
-# Using natural units where hbar = 1
+# Time array (in seconds)
 times = np.linspace(0, duration_ns * 1e-9, num_time_steps)
-dt = times[1] - times[0] if len(times) > 1 else 1e-9
+dt = times[1] - times[0] if len(times) > 1 else duration_ns * 1e-9 / max(num_time_steps, 1)
 
 # Build time-dependent Hamiltonian
-# H(t) = H0 + sum_q (I_q(t) * Hx_q + Q_q(t) * Hy_q)
-def make_coeff(envelope, idx):
+# Pass dt as parameter to avoid closure scoping issues
+def make_coeff(envelope, dt_val):
     def coeff(t, args):
-        # Interpolate envelope
         if len(envelope) == 0:
             return 0.0
-        t_idx = int(t / dt) if dt > 0 else 0
+        t_idx = int(t / dt_val) if dt_val > 0 else 0
         t_idx = min(t_idx, len(envelope) - 1)
         return envelope[t_idx]
     return coeff
 
 H = [H0]
 for i, (Hx, Hy) in enumerate(zip(Hx_list, Hy_list)):
-    # Scale factor for pulse strength (2*pi for Rabi frequency)
-    scale = 2 * np.pi * 1e9  # Convert to angular frequency
-    H.append([scale * Hx, make_coeff(i_envelope, i)])
-    H.append([scale * Hy, make_coeff(q_envelope, i)])
+    # Scale factor: convert envelope units to rad/s
+    scale = 2 * np.pi * 1e9
+    H.append([scale * Hx, make_coeff(i_envelope, dt)])
+    H.append([scale * Hy, make_coeff(q_envelope, dt)])
 
-# Initial state: |0...0>
-psi0 = qutip.basis(dim, 0)
+# Initial state: |0...0> with proper tensor dimensions
+psi0 = qutip.basis([2] * num_qubits, [0] * num_qubits)
 
 # Run simulation
 result = qutip.mesolve(H, psi0, times, [], [])
@@ -254,6 +275,9 @@ psi_final = result.states[-1]
 
 # Compute probabilities
 probs = np.abs(psi_final.full().flatten()) ** 2
+
+# Ensure probabilities sum to 1 (numerical precision)
+probs = probs / np.sum(probs)
 
 # Sample measurements
 rng = np.random.default_rng()
@@ -282,13 +306,16 @@ simulation_result = {
 "#;
 
         // Execute Python code
-        py.run(code, None, Some(locals)).map_err(|e| {
+        // Use the same dict for both globals and locals so closures can access variables
+        let code_cstr = CString::new(code)
+            .map_err(|e| BackendError::Python(format!("Failed to create CString: {}", e)))?;
+        py.run(&code_cstr, Some(&globals), Some(&globals)).map_err(|e| {
             error!("Python simulation failed: {}", e);
             BackendError::Python(format!("Simulation failed: {}", e))
         })?;
 
         // Extract results
-        let result = locals
+        let result = globals
             .get_item("simulation_result")
             .map_err(|e| BackendError::Python(format!("Failed to get simulation_result: {}", e)))?
             .ok_or_else(|| BackendError::Python("simulation_result not found".to_string()))?;
@@ -418,24 +445,46 @@ impl QuantumBackend for QutipBackend {
         }
 
         // Capture backend configuration before spawn_blocking
-        // (spawn_blocking requires 'static, so we clone the needed data)
         let name = self.name.clone();
         let num_qubits = self.num_qubits;
         let limits = self.limits.clone();
         let supports_state_vector = self.supports_state_vector;
+        let timeout = self.timeout;
 
-        // Run simulation (blocking, but wrapped in async)
-        tokio::task::spawn_blocking(move || {
-            let backend = QutipBackend {
-                name,
-                num_qubits,
-                limits,
-                supports_state_vector,
-            };
-            backend.execute_python(&request)
-        })
-        .await
-        .map_err(|e| BackendError::ExecutionFailed(format!("Task join error: {}", e)))?
+        // Run simulation with timeout to prevent infinite hangs
+        let result = tokio::time::timeout(
+            timeout,
+            tokio::task::spawn_blocking(move || {
+                let backend = QutipBackend {
+                    name,
+                    num_qubits,
+                    limits,
+                    supports_state_vector,
+                    timeout,
+                };
+                backend.execute_python(&request)
+            }),
+        )
+        .await;
+
+        match result {
+            Ok(Ok(inner_result)) => inner_result,
+            Ok(Err(join_error)) => Err(BackendError::ExecutionFailed(format!(
+                "Task join error: {}",
+                join_error
+            ))),
+            Err(_timeout_error) => {
+                error!(
+                    timeout_secs = timeout.as_secs(),
+                    "Python execution timed out"
+                );
+                Err(BackendError::ExecutionFailed(format!(
+                    "Python execution timed out after {} seconds. \
+                     This may indicate an infinite loop or very long simulation.",
+                    timeout.as_secs()
+                )))
+            }
+        }
     }
 
     async fn get_hardware_info(&self) -> Result<HardwareInfo, BackendError> {
@@ -461,7 +510,7 @@ impl QuantumBackend for QutipBackend {
                 "iSWAP".to_string(),
             ],
             supports_state_vector: self.supports_state_vector,
-            supports_noise_model: false, // TODO: Add noise support
+            supports_noise_model: false,
             software_version: env!("CARGO_PKG_VERSION").to_string(),
             limits: self.limits.clone(),
         })
@@ -486,21 +535,27 @@ mod tests {
 
     #[test]
     fn test_qutip_availability_check() {
-        // This will check if QuTiP is available
-        // The test passes regardless - it just logs the result
         let available = QutipBackend::check_qutip_available();
         println!("QuTiP available: {}", available);
     }
 
     #[tokio::test]
     async fn test_hardware_info() {
-        // Create backend (may fail if QuTiP not available)
         let config = QutipConfig::default();
         if let Ok(backend) = QutipBackend::new(&config) {
             let info = backend.get_hardware_info().await.unwrap();
             assert_eq!(info.name, "qutip_simulator");
             assert_eq!(info.backend_type, BackendType::Simulator);
             assert!(info.supports_state_vector);
+        }
+    }
+
+    #[test]
+    fn test_timeout_configuration() {
+        let config = QutipConfig::default();
+        if let Ok(backend) = QutipBackend::new(&config) {
+            let backend = backend.with_timeout(Duration::from_secs(60));
+            assert_eq!(backend.timeout.as_secs(), 60);
         }
     }
 }

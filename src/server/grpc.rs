@@ -4,6 +4,11 @@
 //! gRPC server implementation using tonic.
 //!
 //! Implements the QuantumBackend gRPC service defined in qubit-os-proto.
+//!
+//! # Security
+//!
+//! - All inputs are validated before processing (envelope size, qubit bounds, etc.)
+//! - Error messages are sanitized to not leak internal details
 
 use std::collections::HashMap;
 use std::net::SocketAddr;
@@ -23,6 +28,7 @@ use crate::proto::quantum::backend::v1::{
     GetHardwareInfoResponse, HardwareInfo, HealthCheckRequest, HealthCheckResponse,
     HealthStatus as ProtoHealthStatus, MeasurementResult as ProtoMeasurementResult,
 };
+use crate::validation::{validate_api_request, MAX_QUBITS};
 
 /// gRPC server for the QuantumBackend service.
 pub struct GrpcServer {
@@ -69,6 +75,33 @@ struct QuantumBackendService {
     state: Arc<ServerState>,
 }
 
+/// Sanitize error message for gRPC response.
+/// In production, we don't want to leak internal details.
+fn sanitize_error_for_status(error: &Error) -> String {
+    // For validation errors, the message is safe to show
+    if let Error::Validation(ref ve) = error {
+        return ve.to_string();
+    }
+
+    // For other errors, return a generic message in production
+    #[cfg(debug_assertions)]
+    {
+        error.to_string()
+    }
+
+    #[cfg(not(debug_assertions))]
+    {
+        match error {
+            Error::Backend(_) => "Backend execution error".to_string(),
+            Error::Config(_) => "Configuration error".to_string(),
+            Error::Server(_) => "Internal server error".to_string(),
+            Error::Validation(ve) => ve.to_string(),
+            Error::Io(_) => "I/O error".to_string(),
+            Error::Serialization(_) => "Serialization error".to_string(),
+        }
+    }
+}
+
 #[tonic::async_trait]
 impl QuantumBackend for QuantumBackendService {
     #[instrument(skip(self, request), fields(pulse_id, backend))]
@@ -83,10 +116,16 @@ impl QuantumBackend for QuantumBackendService {
             request_id = %request_id,
             pulse_id = %req.pulse_id,
             backend = ?req.backend_name,
+            envelope_len = req.i_envelope.len(),
+            num_shots = req.num_shots,
             "Received ExecutePulse request"
         );
 
-        // Get backend
+        // =====================================================================
+        // SECURITY: Validate all inputs BEFORE any processing
+        // =====================================================================
+
+        // Get backend first to know max_qubits
         let backend = self
             .state
             .registry
@@ -96,7 +135,34 @@ impl QuantumBackend for QuantumBackendService {
                 Status::not_found(e.to_string())
             })?;
 
-        // Convert request
+        // Get backend limits
+        let backend_info = backend.get_hardware_info().await.map_err(|e| {
+            error!(error = %e, "Failed to get backend info for validation");
+            Status::internal("Failed to get backend info")
+        })?;
+
+        // Validate all inputs
+        let max_qubits = std::cmp::min(backend_info.num_qubits, MAX_QUBITS);
+        if let Err(e) = validate_api_request(
+            &req.i_envelope,
+            &req.q_envelope,
+            req.num_shots,
+            req.duration_ns,
+            &req.target_qubits,
+            max_qubits,
+        ) {
+            warn!(
+                request_id = %request_id,
+                error = %e,
+                "Request validation failed"
+            );
+            return Err(Status::invalid_argument(sanitize_error_for_status(&e)));
+        }
+
+        // =====================================================================
+        // Build and execute request
+        // =====================================================================
+
         let backend_request = BackendRequest {
             pulse_id: req.pulse_id.clone(),
             i_envelope: req.i_envelope,

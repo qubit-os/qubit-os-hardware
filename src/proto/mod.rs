@@ -132,7 +132,8 @@ pub mod quantum {
                     const NAME: &'static str = SERVICE_NAME;
                 }
 
-                impl<T: QuantumBackend> tower::Service<http::Request<tonic::transport::Body>>
+                // Use http::Request<tonic::body::BoxBody> as the correct type for tonic 0.12
+                impl<T: QuantumBackend> tower::Service<http::Request<tonic::body::BoxBody>>
                     for QuantumBackendServer<T>
                 {
                     type Response = http::Response<tonic::body::BoxBody>;
@@ -154,7 +155,7 @@ pub mod quantum {
 
                     fn call(
                         &mut self,
-                        _req: http::Request<tonic::transport::Body>,
+                        _req: http::Request<tonic::body::BoxBody>,
                     ) -> Self::Future {
                         Box::pin(async move {
                             Ok(http::Response::builder()

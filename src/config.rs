@@ -91,6 +91,12 @@ impl Config {
         if let Ok(val) = env::var("QUBITOS_STRICT_VALIDATION") {
             self.validation.strict = val.to_lowercase() == "true" || val == "1";
         }
+        if let Ok(val) = env::var("QUBITOS_CORS_ALLOW_ALL") {
+            self.server.cors.allow_all = val.to_lowercase() == "true" || val == "1";
+        }
+        if let Ok(val) = env::var("QUBITOS_CORS_ALLOWED_ORIGINS") {
+            self.server.cors.allowed_origins = val.split(',').map(|s| s.trim().to_string()).collect();
+        }
 
         // IQM backend
         if let Ok(val) = env::var("IQM_GATEWAY_URL") {
@@ -113,6 +119,13 @@ impl Config {
             return Err(Error::Config(
                 "gRPC and REST ports must be different".into(),
             ));
+        }
+        // Warn about CORS allow_all in non-development mode
+        if self.server.cors.allow_all {
+            tracing::warn!(
+                "CORS is set to allow all origins. This is insecure for production use. \
+                 Set QUBITOS_CORS_ALLOW_ALL=false or configure specific origins."
+            );
         }
         Ok(())
     }
@@ -140,6 +153,18 @@ pub struct ServerConfig {
     /// Request timeout in seconds
     #[serde(default = "default_timeout")]
     pub timeout_sec: u64,
+
+    /// CORS configuration
+    #[serde(default)]
+    pub cors: CorsConfig,
+
+    /// Rate limiting configuration
+    #[serde(default)]
+    pub rate_limit: RateLimitConfig,
+
+    /// Graceful shutdown timeout in seconds
+    #[serde(default = "default_shutdown_timeout")]
+    pub shutdown_timeout_sec: u64,
 }
 
 impl Default for ServerConfig {
@@ -150,12 +175,93 @@ impl Default for ServerConfig {
             rest_port: default_rest_port(),
             rest_enabled: true,
             timeout_sec: default_timeout(),
+            cors: CorsConfig::default(),
+            rate_limit: RateLimitConfig::default(),
+            shutdown_timeout_sec: default_shutdown_timeout(),
         }
     }
 }
 
+/// CORS configuration.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CorsConfig {
+    /// Allow all origins (INSECURE - for development only)
+    #[serde(default)]
+    pub allow_all: bool,
+
+    /// Allowed origins when allow_all is false
+    #[serde(default)]
+    pub allowed_origins: Vec<String>,
+
+    /// Allowed methods (defaults to GET, POST, PUT, DELETE)
+    #[serde(default = "default_cors_methods")]
+    pub allowed_methods: Vec<String>,
+
+    /// Allowed headers (defaults to common headers)
+    #[serde(default = "default_cors_headers")]
+    pub allowed_headers: Vec<String>,
+}
+
+impl Default for CorsConfig {
+    fn default() -> Self {
+        Self {
+            // Default to NOT allowing all origins for security
+            allow_all: false,
+            allowed_origins: vec![
+                "http://localhost:3000".into(),
+                "http://127.0.0.1:3000".into(),
+            ],
+            allowed_methods: default_cors_methods(),
+            allowed_headers: default_cors_headers(),
+        }
+    }
+}
+
+/// Rate limiting configuration.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RateLimitConfig {
+    /// Enable rate limiting
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+
+    /// Requests per second
+    #[serde(default = "default_rate_limit_rps")]
+    pub requests_per_second: u32,
+}
+
+impl Default for RateLimitConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            requests_per_second: default_rate_limit_rps(),
+        }
+    }
+}
+
+fn default_rate_limit_rps() -> u32 {
+    100
+}
+
+fn default_cors_methods() -> Vec<String> {
+    vec![
+        "GET".into(),
+        "POST".into(),
+        "PUT".into(),
+        "DELETE".into(),
+        "OPTIONS".into(),
+    ]
+}
+
+fn default_cors_headers() -> Vec<String> {
+    vec![
+        "Content-Type".into(),
+        "Authorization".into(),
+        "X-Request-ID".into(),
+    ]
+}
+
 fn default_host() -> String {
-    "0.0.0.0".into()
+    "127.0.0.1".into()
 }
 
 fn default_grpc_port() -> u16 {
@@ -168,6 +274,10 @@ fn default_rest_port() -> u16 {
 
 fn default_timeout() -> u64 {
     300
+}
+
+fn default_shutdown_timeout() -> u64 {
+    30
 }
 
 fn default_true() -> bool {
@@ -435,5 +545,14 @@ mod tests {
         let mut bad_config = Config::default();
         bad_config.server.grpc_port = 0;
         assert!(bad_config.validate().is_err());
+    }
+
+    #[test]
+    fn test_cors_config_defaults_to_secure() {
+        let config = Config::default();
+        // CORS should NOT allow all origins by default
+        assert!(!config.server.cors.allow_all);
+        // Should have some allowed origins
+        assert!(!config.server.cors.allowed_origins.is_empty());
     }
 }

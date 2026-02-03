@@ -2,9 +2,121 @@
 // SPDX-License-Identifier: Apache-2.0
 
 //! Input validation for HAL requests.
+//!
+//! # Security
+//!
+//! All input validation is done at the API boundary (REST/gRPC) before
+//! reaching the backend. This prevents malicious inputs from causing:
+//! - Memory exhaustion (huge envelope arrays)
+//! - CPU exhaustion (too many time steps)
+//! - Invalid state (NaN/Inf values)
 
 use crate::config::ResourceLimits;
-use crate::error::{Result, ValidationError};
+use crate::error::{Error, ValidationError};
+
+/// Maximum envelope size to prevent OOM attacks.
+/// 10,000 points at 8 bytes each = 80KB per envelope (160KB total).
+pub const MAX_ENVELOPE_SIZE: usize = 10_000;
+
+/// Maximum number of shots to prevent DoS.
+pub const MAX_SHOTS: u32 = 1_000_000;
+
+/// Maximum number of qubits (limited by Hilbert space explosion).
+pub const MAX_QUBITS: u32 = 20;
+
+/// Maximum pulse duration in nanoseconds (100 microseconds).
+pub const MAX_PULSE_DURATION_NS: u32 = 100_000;
+
+/// Maximum amplitude (in MHz) for pulse values.
+pub const MAX_PULSE_AMPLITUDE: f64 = 1000.0;
+
+/// Result type for validation functions.
+pub type Result<T> = std::result::Result<T, Error>;
+
+/// Validate envelope sizes early (before expensive processing).
+/// This is the first line of defense against DoS attacks.
+pub fn validate_envelope_size(i_len: usize, q_len: usize) -> Result<()> {
+    if i_len > MAX_ENVELOPE_SIZE {
+        return Err(ValidationError::ResourceLimit {
+            resource: "i_envelope".into(),
+            limit: MAX_ENVELOPE_SIZE as u64,
+            requested: i_len as u64,
+        }
+        .into());
+    }
+
+    if q_len > MAX_ENVELOPE_SIZE {
+        return Err(ValidationError::ResourceLimit {
+            resource: "q_envelope".into(),
+            limit: MAX_ENVELOPE_SIZE as u64,
+            requested: q_len as u64,
+        }
+        .into());
+    }
+
+    Ok(())
+}
+
+/// Validate target qubits are within bounds.
+pub fn validate_target_qubits(target_qubits: &[u32], max_qubits: u32) -> Result<()> {
+    if target_qubits.is_empty() {
+        return Err(ValidationError::Field {
+            field: "target_qubits".into(),
+            message: "must not be empty".into(),
+        }
+        .into());
+    }
+
+    for &qubit in target_qubits {
+        if qubit >= max_qubits {
+            return Err(ValidationError::Field {
+                field: "target_qubits".into(),
+                message: format!(
+                    "qubit {} exceeds maximum {} (0-indexed)",
+                    qubit,
+                    max_qubits - 1
+                ),
+            }
+            .into());
+        }
+    }
+
+    // Check for duplicates
+    let mut seen = std::collections::HashSet::new();
+    for &qubit in target_qubits {
+        if !seen.insert(qubit) {
+            return Err(ValidationError::Field {
+                field: "target_qubits".into(),
+                message: format!("duplicate qubit index: {}", qubit),
+            }
+            .into());
+        }
+    }
+
+    Ok(())
+}
+
+/// Validate number of shots.
+pub fn validate_num_shots(num_shots: u32) -> Result<()> {
+    if num_shots == 0 {
+        return Err(ValidationError::Field {
+            field: "num_shots".into(),
+            message: "must be greater than 0".into(),
+        }
+        .into());
+    }
+
+    if num_shots > MAX_SHOTS {
+        return Err(ValidationError::ResourceLimit {
+            resource: "num_shots".into(),
+            limit: MAX_SHOTS as u64,
+            requested: num_shots as u64,
+        }
+        .into());
+    }
+
+    Ok(())
+}
 
 /// Validate pulse execution request parameters.
 pub fn validate_execute_pulse_request(
@@ -13,13 +125,7 @@ pub fn validate_execute_pulse_request(
     num_time_steps: u32,
     limits: &ResourceLimits,
 ) -> Result<()> {
-    if num_shots == 0 {
-        return Err(ValidationError::Field {
-            field: "num_shots".into(),
-            message: "must be greater than 0".into(),
-        }
-        .into());
-    }
+    validate_num_shots(num_shots)?;
 
     if num_shots > limits.max_shots {
         return Err(ValidationError::ResourceLimit {
@@ -48,6 +154,14 @@ pub fn validate_execute_pulse_request(
         .into());
     }
 
+    if num_time_steps == 0 {
+        return Err(ValidationError::Field {
+            field: "num_time_steps".into(),
+            message: "must be greater than 0".into(),
+        }
+        .into());
+    }
+
     Ok(())
 }
 
@@ -58,6 +172,9 @@ pub fn validate_pulse_envelope(
     num_time_steps: usize,
     max_amplitude: f64,
 ) -> Result<()> {
+    // First check size limits
+    validate_envelope_size(i_envelope.len(), q_envelope.len())?;
+
     if i_envelope.len() != num_time_steps {
         return Err(ValidationError::Field {
             field: "i_envelope".into(),
@@ -162,9 +279,105 @@ pub fn validate_batch_size(batch_size: usize, limits: &ResourceLimits) -> Result
     Ok(())
 }
 
+/// Full validation of an execute pulse request at the API boundary.
+/// Call this before passing to backend.
+pub fn validate_api_request(
+    i_envelope: &[f64],
+    q_envelope: &[f64],
+    num_shots: u32,
+    duration_ns: u32,
+    target_qubits: &[u32],
+    max_qubits: u32,
+) -> Result<()> {
+    // Size limits first (cheap, prevents DoS)
+    validate_envelope_size(i_envelope.len(), q_envelope.len())?;
+    validate_num_shots(num_shots)?;
+    validate_target_qubits(target_qubits, max_qubits)?;
+
+    // Duration validation
+    if duration_ns == 0 {
+        return Err(ValidationError::Field {
+            field: "duration_ns".into(),
+            message: "must be greater than 0".into(),
+        }
+        .into());
+    }
+
+    if duration_ns > MAX_PULSE_DURATION_NS {
+        return Err(ValidationError::ResourceLimit {
+            resource: "duration_ns".into(),
+            limit: MAX_PULSE_DURATION_NS as u64,
+            requested: duration_ns as u64,
+        }
+        .into());
+    }
+
+    // Envelope length must match
+    if i_envelope.len() != q_envelope.len() {
+        return Err(ValidationError::Field {
+            field: "envelopes".into(),
+            message: format!(
+                "i_envelope length {} != q_envelope length {}",
+                i_envelope.len(),
+                q_envelope.len()
+            ),
+        }
+        .into());
+    }
+
+    // Content validation (more expensive)
+    validate_pulse_envelope(
+        i_envelope,
+        q_envelope,
+        i_envelope.len(),
+        MAX_PULSE_AMPLITUDE,
+    )?;
+
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_validate_envelope_size() {
+        // Valid
+        assert!(validate_envelope_size(100, 100).is_ok());
+        assert!(validate_envelope_size(MAX_ENVELOPE_SIZE, MAX_ENVELOPE_SIZE).is_ok());
+
+        // Invalid
+        assert!(validate_envelope_size(MAX_ENVELOPE_SIZE + 1, 100).is_err());
+        assert!(validate_envelope_size(100, MAX_ENVELOPE_SIZE + 1).is_err());
+    }
+
+    #[test]
+    fn test_validate_num_shots() {
+        // Valid
+        assert!(validate_num_shots(1).is_ok());
+        assert!(validate_num_shots(1000).is_ok());
+        assert!(validate_num_shots(MAX_SHOTS).is_ok());
+
+        // Invalid
+        assert!(validate_num_shots(0).is_err());
+        assert!(validate_num_shots(MAX_SHOTS + 1).is_err());
+    }
+
+    #[test]
+    fn test_validate_target_qubits() {
+        // Valid
+        assert!(validate_target_qubits(&[0], 2).is_ok());
+        assert!(validate_target_qubits(&[0, 1], 2).is_ok());
+
+        // Invalid - empty
+        assert!(validate_target_qubits(&[], 2).is_err());
+
+        // Invalid - out of bounds
+        assert!(validate_target_qubits(&[2], 2).is_err());
+
+        // Invalid - duplicates
+        assert!(validate_target_qubits(&[0, 0], 2).is_err());
+    }
 
     #[test]
     fn test_validate_execute_pulse_request() {
@@ -176,8 +389,11 @@ mod tests {
         // Zero shots
         assert!(validate_execute_pulse_request(0, 100, 50, &limits).is_err());
 
+        // Zero time steps
+        assert!(validate_execute_pulse_request(1000, 100, 0, &limits).is_err());
+
         // Exceeds max shots
-        assert!(validate_execute_pulse_request(1_000_000, 100, 50, &limits).is_err());
+        assert!(validate_execute_pulse_request(2_000_000, 100, 50, &limits).is_err());
     }
 
     #[test]
@@ -195,5 +411,32 @@ mod tests {
         let mut bad_env = i_env.clone();
         bad_env[50] = f64::NAN;
         assert!(validate_pulse_envelope(&bad_env, &q_env, 100, 100.0).is_err());
+
+        // Contains Inf
+        let mut bad_env = i_env.clone();
+        bad_env[50] = f64::INFINITY;
+        assert!(validate_pulse_envelope(&bad_env, &q_env, 100, 100.0).is_err());
+
+        // Exceeds amplitude
+        let mut bad_env = i_env.clone();
+        bad_env[50] = 200.0;
+        assert!(validate_pulse_envelope(&bad_env, &q_env, 100, 100.0).is_err());
+    }
+
+    #[test]
+    fn test_validate_api_request() {
+        let i_env: Vec<f64> = vec![0.5; 100];
+        let q_env: Vec<f64> = vec![0.5; 100];
+
+        // Valid
+        assert!(validate_api_request(&i_env, &q_env, 1000, 20, &[0], 2).is_ok());
+
+        // Invalid - envelope too large
+        let large_i: Vec<f64> = vec![0.0; MAX_ENVELOPE_SIZE + 1];
+        let large_q: Vec<f64> = vec![0.0; MAX_ENVELOPE_SIZE + 1];
+        assert!(validate_api_request(&large_i, &large_q, 1000, 20, &[0], 2).is_err());
+
+        // Invalid - zero duration
+        assert!(validate_api_request(&i_env, &q_env, 1000, 0, &[0], 2).is_err());
     }
 }
