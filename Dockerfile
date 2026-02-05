@@ -43,7 +43,7 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Python dependencies for QuTiP backend
-RUN pip3 install --break-system-packages qutip numpy
+RUN pip3 install --break-system-packages "qutip>=5.0.0,<6.0.0" "numpy>=1.26.0,<2.0.0" "scipy>=1.12.0,<2.0.0"
 
 # Copy binary from builder
 COPY --from=builder /app/target/release/qubit-os-hal /usr/local/bin/
