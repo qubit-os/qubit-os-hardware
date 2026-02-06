@@ -335,12 +335,205 @@ impl QuantumBackend for QuantumBackendService {
 mod tests {
     use super::*;
     use crate::backend::BackendRegistry;
+    use crate::proto::quantum::backend::v1::quantum_backend_server::QuantumBackend as QBTrait;
+    use crate::test_utils::{DegradedMockBackend, MockBackend};
+
+    fn empty_state() -> Arc<ServerState> {
+        Arc::new(ServerState::new(Arc::new(BackendRegistry::default())))
+    }
+
+    fn state_with_mock() -> Arc<ServerState> {
+        let registry = Arc::new(BackendRegistry::default());
+        registry.register(MockBackend::simulator("test"));
+        Arc::new(ServerState::new(registry))
+    }
+
+    fn make_service(state: Arc<ServerState>) -> QuantumBackendService {
+        QuantumBackendService { state }
+    }
+
+    fn valid_pulse_request() -> ExecutePulseRequest {
+        ExecutePulseRequest {
+            pulse_id: "p1".to_string(),
+            backend_name: None,
+            i_envelope: vec![0.1; 10],
+            q_envelope: vec![0.1; 10],
+            duration_ns: 100,
+            num_time_steps: 10,
+            target_qubits: vec![0],
+            num_shots: 1000,
+            measurement_basis: "Z".to_string(),
+            return_state_vector: false,
+            include_noise: false,
+        }
+    }
 
     #[tokio::test]
     async fn test_grpc_server_creation() {
         let registry = Arc::new(BackendRegistry::default());
         let state = Arc::new(ServerState::new(registry));
         let _server = GrpcServer::new(state);
-        // Server created successfully - if we got here without panic, test passed
+    }
+
+    #[tokio::test]
+    async fn test_execute_pulse_success() {
+        let svc = make_service(state_with_mock());
+        let resp = svc
+            .execute_pulse(Request::new(valid_pulse_request()))
+            .await
+            .unwrap();
+
+        let inner = resp.into_inner();
+        assert!(!inner.request_id.is_empty());
+        assert_eq!(inner.pulse_id, "p1");
+        let result = inner.result.unwrap();
+        assert_eq!(result.total_shots, 1000);
+        assert_eq!(result.successful_shots, 1000);
+    }
+
+    #[tokio::test]
+    async fn test_execute_pulse_no_backend() {
+        let svc = make_service(empty_state());
+        let err = svc
+            .execute_pulse(Request::new(valid_pulse_request()))
+            .await
+            .unwrap_err();
+
+        assert_eq!(err.code(), tonic::Code::NotFound);
+    }
+
+    #[tokio::test]
+    async fn test_execute_pulse_validation_error() {
+        let svc = make_service(state_with_mock());
+        let mut req = valid_pulse_request();
+        req.num_shots = 0; // invalid
+
+        let err = svc.execute_pulse(Request::new(req)).await.unwrap_err();
+        assert_eq!(err.code(), tonic::Code::InvalidArgument);
+    }
+
+    #[tokio::test]
+    async fn test_get_hardware_info_success() {
+        let svc = make_service(state_with_mock());
+        let resp = svc
+            .get_hardware_info(Request::new(GetHardwareInfoRequest {
+                backend_name: Some("test".to_string()),
+            }))
+            .await
+            .unwrap();
+
+        let info = resp.into_inner().info.unwrap();
+        assert_eq!(info.name, "test");
+        assert_eq!(info.num_qubits, 2);
+    }
+
+    #[tokio::test]
+    async fn test_get_hardware_info_not_found() {
+        let svc = make_service(state_with_mock());
+        let err = svc
+            .get_hardware_info(Request::new(GetHardwareInfoRequest {
+                backend_name: Some("nope".to_string()),
+            }))
+            .await
+            .unwrap_err();
+
+        assert_eq!(err.code(), tonic::Code::NotFound);
+    }
+
+    #[tokio::test]
+    async fn test_get_hardware_info_default() {
+        let svc = make_service(state_with_mock());
+        let resp = svc
+            .get_hardware_info(Request::new(GetHardwareInfoRequest {
+                backend_name: None,
+            }))
+            .await
+            .unwrap();
+
+        let info = resp.into_inner().info.unwrap();
+        assert_eq!(info.name, "test");
+    }
+
+    #[tokio::test]
+    async fn test_health_check_single_healthy() {
+        let svc = make_service(state_with_mock());
+        let resp = svc
+            .health_check(Request::new(HealthCheckRequest {
+                backend_name: Some("test".to_string()),
+            }))
+            .await
+            .unwrap();
+
+        let inner = resp.into_inner();
+        assert_eq!(inner.status, ProtoHealthStatus::Healthy as i32);
+    }
+
+    #[tokio::test]
+    async fn test_health_check_all_healthy() {
+        let svc = make_service(state_with_mock());
+        let resp = svc
+            .health_check(Request::new(HealthCheckRequest {
+                backend_name: None,
+            }))
+            .await
+            .unwrap();
+
+        let inner = resp.into_inner();
+        assert_eq!(inner.status, ProtoHealthStatus::Healthy as i32);
+        assert!(inner.backends.contains_key("test"));
+    }
+
+    #[tokio::test]
+    async fn test_health_check_mixed_status() {
+        let registry = Arc::new(BackendRegistry::default());
+        registry.register(MockBackend::simulator("healthy"));
+        registry.register(Arc::new(DegradedMockBackend::new("degraded")));
+        let state = Arc::new(ServerState::new(registry));
+
+        let svc = make_service(state);
+        let resp = svc
+            .health_check(Request::new(HealthCheckRequest {
+                backend_name: None,
+            }))
+            .await
+            .unwrap();
+
+        let inner = resp.into_inner();
+        // Overall should be degraded since one backend is degraded
+        assert_eq!(inner.status, ProtoHealthStatus::Degraded as i32);
+    }
+
+    #[tokio::test]
+    async fn test_health_check_not_found() {
+        let svc = make_service(state_with_mock());
+        let err = svc
+            .health_check(Request::new(HealthCheckRequest {
+                backend_name: Some("nope".to_string()),
+            }))
+            .await
+            .unwrap_err();
+
+        assert_eq!(err.code(), tonic::Code::NotFound);
+    }
+
+    #[test]
+    fn test_sanitize_error_for_status_validation() {
+        use crate::error::ValidationError;
+        let e = Error::Validation(ValidationError::Field {
+            field: "x".into(),
+            message: "bad".into(),
+        });
+        let msg = sanitize_error_for_status(&e);
+        assert!(msg.contains("x"));
+        assert!(msg.contains("bad"));
+    }
+
+    #[test]
+    fn test_sanitize_error_for_status_non_validation() {
+        let e = Error::Server("internal detail".into());
+        let msg = sanitize_error_for_status(&e);
+        // In debug mode, should show the detail
+        #[cfg(debug_assertions)]
+        assert!(msg.contains("internal detail"));
     }
 }

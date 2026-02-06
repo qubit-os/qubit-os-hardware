@@ -528,6 +528,7 @@ fn default_max_grape_iterations() -> u32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::io::Write as _;
 
     #[test]
     fn test_default_config() {
@@ -551,9 +552,147 @@ mod tests {
     #[test]
     fn test_cors_config_defaults_to_secure() {
         let config = Config::default();
-        // CORS should NOT allow all origins by default
         assert!(!config.server.cors.allow_all);
-        // Should have some allowed origins
         assert!(!config.server.cors.allowed_origins.is_empty());
+    }
+
+    #[test]
+    fn test_config_load_from_file() {
+        let mut f = tempfile::NamedTempFile::new().unwrap();
+        writeln!(
+            f,
+            r#"
+server:
+  host: "0.0.0.0"
+  grpc_port: 9000
+  rest_port: 9001
+"#
+        )
+        .unwrap();
+
+        let config = Config::load(Some(f.path())).unwrap();
+        assert_eq!(config.server.host, "0.0.0.0");
+        assert_eq!(config.server.grpc_port, 9000);
+        assert_eq!(config.server.rest_port, 9001);
+    }
+
+    #[test]
+    fn test_config_load_nonexistent_file() {
+        // When a path is provided but doesn't exist, load returns defaults
+        let path = std::path::Path::new("/tmp/does_not_exist_qubitos_test.yaml");
+        let config = Config::load(Some(path)).unwrap();
+        assert_eq!(config.server.grpc_port, 50051);
+    }
+
+    #[test]
+    fn test_config_load_invalid_yaml() {
+        let mut f = tempfile::NamedTempFile::new().unwrap();
+        writeln!(f, "{{{{not: valid: yaml::::").unwrap();
+
+        let result = Config::load(Some(f.path()));
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_env_override_host() {
+        let mut config = Config::default();
+        std::env::set_var("QUBITOS_HAL_HOST", "0.0.0.0");
+        config.apply_env_overrides();
+        assert_eq!(config.server.host, "0.0.0.0");
+        std::env::remove_var("QUBITOS_HAL_HOST");
+    }
+
+    #[test]
+    fn test_env_override_grpc_port() {
+        let mut config = Config::default();
+        std::env::set_var("QUBITOS_HAL_GRPC_PORT", "12345");
+        config.apply_env_overrides();
+        assert_eq!(config.server.grpc_port, 12345);
+        std::env::remove_var("QUBITOS_HAL_GRPC_PORT");
+    }
+
+    #[test]
+    fn test_env_override_rest_port() {
+        let mut config = Config::default();
+        std::env::set_var("QUBITOS_HAL_REST_PORT", "8888");
+        config.apply_env_overrides();
+        assert_eq!(config.server.rest_port, 8888);
+        std::env::remove_var("QUBITOS_HAL_REST_PORT");
+    }
+
+    #[test]
+    fn test_env_override_log_level() {
+        let mut config = Config::default();
+        std::env::set_var("QUBITOS_LOG_LEVEL", "debug");
+        config.apply_env_overrides();
+        assert_eq!(config.logging.level, "debug");
+        std::env::remove_var("QUBITOS_LOG_LEVEL");
+    }
+
+    #[test]
+    fn test_env_override_strict_validation() {
+        let mut config = Config::default();
+        std::env::set_var("QUBITOS_STRICT_VALIDATION", "false");
+        config.apply_env_overrides();
+        assert!(!config.validation.strict);
+        std::env::remove_var("QUBITOS_STRICT_VALIDATION");
+
+        // Also test "1" → true
+        std::env::set_var("QUBITOS_STRICT_VALIDATION", "1");
+        config.apply_env_overrides();
+        assert!(config.validation.strict);
+        std::env::remove_var("QUBITOS_STRICT_VALIDATION");
+    }
+
+    #[test]
+    fn test_env_override_cors_origins() {
+        let mut config = Config::default();
+        std::env::set_var("QUBITOS_CORS_ALLOWED_ORIGINS", "http://a.com, http://b.com");
+        config.apply_env_overrides();
+        assert_eq!(config.server.cors.allowed_origins.len(), 2);
+        assert_eq!(config.server.cors.allowed_origins[0], "http://a.com");
+        assert_eq!(config.server.cors.allowed_origins[1], "http://b.com");
+        std::env::remove_var("QUBITOS_CORS_ALLOWED_ORIGINS");
+    }
+
+    #[test]
+    fn test_validate_rest_port_zero() {
+        let mut config = Config::default();
+        config.server.rest_port = 0;
+        let result = config.validate();
+        assert!(result.is_err());
+        let msg = format!("{}", result.unwrap_err());
+        assert!(msg.contains("REST port"));
+    }
+
+    #[test]
+    fn test_validate_same_ports() {
+        let mut config = Config::default();
+        config.server.grpc_port = 5000;
+        config.server.rest_port = 5000;
+        let result = config.validate();
+        assert!(result.is_err());
+        let msg = format!("{}", result.unwrap_err());
+        assert!(msg.contains("different"));
+    }
+
+    #[test]
+    fn test_validate_cors_allow_all_still_passes() {
+        let mut config = Config::default();
+        config.server.cors.allow_all = true;
+        // Should warn but still pass validation
+        assert!(config.validate().is_ok());
+    }
+
+    #[test]
+    fn test_resource_limits_defaults() {
+        let limits = ResourceLimits::default();
+        assert_eq!(limits.max_hilbert_dim, 64);
+        assert_eq!(limits.max_qubits, 6);
+        assert_eq!(limits.max_shots, 100_000);
+        assert_eq!(limits.max_pulse_duration_ns, 100_000);
+        assert_eq!(limits.max_time_steps, 10_000);
+        assert_eq!(limits.max_batch_size, 100);
+        assert_eq!(limits.max_grape_iterations, 10_000);
     }
 }

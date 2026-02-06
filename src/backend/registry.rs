@@ -199,82 +199,12 @@ impl Default for BackendRegistry {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::backend::r#trait::{
-        ExecutePulseRequest, HardwareInfo, HealthStatus, MeasurementResult, ResultQuality,
-    };
-    use async_trait::async_trait;
-    use std::collections::HashMap;
-
-    /// Mock backend for testing
-    struct MockBackend {
-        name: String,
-        backend_type: BackendType,
-        limits: ResourceLimits,
-    }
-
-    impl MockBackend {
-        fn new(name: &str, backend_type: BackendType) -> Self {
-            Self {
-                name: name.to_string(),
-                backend_type,
-                limits: ResourceLimits::default(),
-            }
-        }
-    }
-
-    #[async_trait]
-    impl QuantumBackend for MockBackend {
-        fn name(&self) -> &str {
-            &self.name
-        }
-
-        fn backend_type(&self) -> BackendType {
-            self.backend_type
-        }
-
-        async fn execute_pulse(
-            &self,
-            _request: ExecutePulseRequest,
-        ) -> std::result::Result<MeasurementResult, BackendError> {
-            Ok(MeasurementResult {
-                bitstring_counts: HashMap::new(),
-                total_shots: 1000,
-                successful_shots: 1000,
-                quality: ResultQuality::FullSuccess,
-                fidelity_estimate: Some(0.99),
-                state_vector: None,
-            })
-        }
-
-        async fn get_hardware_info(&self) -> std::result::Result<HardwareInfo, BackendError> {
-            Ok(HardwareInfo {
-                name: self.name.clone(),
-                backend_type: self.backend_type,
-                tier: "local".to_string(),
-                num_qubits: 2,
-                available_qubits: vec![0, 1],
-                supported_gates: vec!["X".to_string(), "Y".to_string(), "Z".to_string()],
-                supports_state_vector: true,
-                supports_noise_model: false,
-                software_version: "1.0.0".to_string(),
-                limits: self.limits.clone(),
-            })
-        }
-
-        async fn health_check(&self) -> std::result::Result<HealthStatus, BackendError> {
-            Ok(HealthStatus::Healthy)
-        }
-
-        fn resource_limits(&self) -> &ResourceLimits {
-            &self.limits
-        }
-    }
+    use crate::test_utils::MockBackend;
 
     #[test]
     fn test_registry_register_and_get() {
         let registry = BackendRegistry::default();
-        let backend = Arc::new(MockBackend::new("test", BackendType::Simulator));
-
+        let backend = MockBackend::simulator("test");
         registry.register(backend);
 
         assert!(registry.contains("test"));
@@ -288,18 +218,12 @@ mod tests {
     #[test]
     fn test_registry_default_backend() {
         let registry = BackendRegistry::default();
-        let backend1 = Arc::new(MockBackend::new("first", BackendType::Simulator));
-        let backend2 = Arc::new(MockBackend::new("second", BackendType::Hardware));
-
-        // First registered becomes default
-        registry.register(backend1);
+        registry.register(MockBackend::simulator("first"));
         assert_eq!(registry.default_backend_name(), Some("first".to_string()));
 
-        // Second doesn't change default
-        registry.register(backend2);
+        registry.register(Arc::new(MockBackend::new("second", BackendType::Hardware)));
         assert_eq!(registry.default_backend_name(), Some("first".to_string()));
 
-        // Explicit set_default
         registry.set_default("second").unwrap();
         assert_eq!(registry.default_backend_name(), Some("second".to_string()));
     }
@@ -307,26 +231,18 @@ mod tests {
     #[test]
     fn test_registry_get_or_default() {
         let registry = BackendRegistry::default();
-        let backend = Arc::new(MockBackend::new("test", BackendType::Simulator));
-        registry.register(backend);
+        registry.register(MockBackend::simulator("test"));
 
-        // With name
-        let result = registry.get_or_default(Some("test"));
-        assert!(result.is_ok());
-
-        // Without name (uses default)
-        let result = registry.get_or_default(None);
-        assert!(result.is_ok());
+        assert!(registry.get_or_default(Some("test")).is_ok());
+        assert!(registry.get_or_default(None).is_ok());
     }
 
     #[test]
     fn test_registry_unregister() {
         let registry = BackendRegistry::default();
-        let backend = Arc::new(MockBackend::new("test", BackendType::Simulator));
-        registry.register(backend);
+        registry.register(MockBackend::simulator("test"));
 
         assert!(registry.contains("test"));
-
         let removed = registry.unregister("test");
         assert!(removed.is_some());
         assert!(!registry.contains("test"));
@@ -336,7 +252,7 @@ mod tests {
     #[test]
     fn test_registry_list() {
         let registry = BackendRegistry::default();
-        registry.register(Arc::new(MockBackend::new("sim", BackendType::Simulator)));
+        registry.register(MockBackend::simulator("sim"));
         registry.register(Arc::new(MockBackend::new("hw", BackendType::Hardware)));
 
         let names = registry.list();
@@ -346,5 +262,65 @@ mod tests {
 
         let with_types = registry.list_with_types();
         assert_eq!(with_types.len(), 2);
+    }
+
+    #[test]
+    fn test_set_default_nonexistent() {
+        let registry = BackendRegistry::default();
+        let result = registry.set_default("nope");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_get_nonexistent() {
+        let registry = BackendRegistry::default();
+        let result = registry.get("nope");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_get_default_empty_registry() {
+        let registry = BackendRegistry::default();
+        let result = registry.get_default();
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_unregister_non_default() {
+        let registry = BackendRegistry::default();
+        registry.register(MockBackend::simulator("first"));
+        registry.register(MockBackend::simulator("second"));
+
+        // "first" is default; remove "second" — default should stay
+        registry.unregister("second");
+        assert_eq!(registry.default_backend_name(), Some("first".to_string()));
+        assert_eq!(registry.len(), 1);
+    }
+
+    #[test]
+    fn test_unregister_default_clears() {
+        let registry = BackendRegistry::default();
+        registry.register(MockBackend::simulator("only"));
+        assert_eq!(registry.default_backend_name(), Some("only".to_string()));
+
+        registry.unregister("only");
+        assert_eq!(registry.default_backend_name(), None);
+    }
+
+    #[test]
+    fn test_with_limits() {
+        let mut limits = ResourceLimits::default();
+        limits.max_qubits = 20;
+        limits.max_shots = 500_000;
+
+        let registry = BackendRegistry::with_limits(limits);
+        assert_eq!(registry.limits().max_qubits, 20);
+        assert_eq!(registry.limits().max_shots, 500_000);
+    }
+
+    #[test]
+    fn test_default_backend_name_empty() {
+        let registry = BackendRegistry::default();
+        assert_eq!(registry.default_backend_name(), None);
     }
 }

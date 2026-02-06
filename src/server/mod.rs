@@ -143,3 +143,59 @@ pub async fn run_servers(config: &ServerConfig, registry: Arc<BackendRegistry>) 
 
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::backend::BackendRegistry;
+
+    #[test]
+    fn test_server_state_new() {
+        let registry = Arc::new(BackendRegistry::default());
+        let state = ServerState::new(registry.clone());
+        // Receiver should start with false (no shutdown)
+        assert_eq!(*state.shutdown_rx.borrow(), false);
+        // Registry should be the same
+        assert!(state.registry.is_empty());
+    }
+
+    #[test]
+    fn test_server_state_shutdown_signal() {
+        let registry = Arc::new(BackendRegistry::default());
+        let state = ServerState::new(registry);
+        let rx = state.shutdown_receiver();
+
+        assert_eq!(*rx.borrow(), false);
+        state.shutdown();
+        assert_eq!(*rx.borrow(), true);
+    }
+
+    #[test]
+    fn test_server_state_multiple_receivers() {
+        let registry = Arc::new(BackendRegistry::default());
+        let state = ServerState::new(registry);
+        let rx1 = state.shutdown_receiver();
+        let rx2 = state.shutdown_receiver();
+
+        state.shutdown();
+        assert_eq!(*rx1.borrow(), true);
+        assert_eq!(*rx2.borrow(), true);
+    }
+
+    #[tokio::test]
+    async fn test_server_state_shutdown_receiver_changed() {
+        let registry = Arc::new(BackendRegistry::default());
+        let state = ServerState::new(registry);
+        let mut rx = state.shutdown_receiver();
+
+        // Spawn shutdown after a brief delay
+        tokio::spawn(async move {
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+            state.shutdown();
+        });
+
+        // Wait for the change
+        rx.changed().await.unwrap();
+        assert_eq!(*rx.borrow(), true);
+    }
+}

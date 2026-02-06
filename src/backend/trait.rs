@@ -142,3 +142,65 @@ pub trait QuantumBackend: Send + Sync {
     /// Get resource limits.
     fn resource_limits(&self) -> &ResourceLimits;
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_backend_type_display_simulator() {
+        assert_eq!(BackendType::Simulator.to_string(), "simulator");
+    }
+
+    #[test]
+    fn test_backend_type_display_hardware() {
+        assert_eq!(BackendType::Hardware.to_string(), "hardware");
+    }
+
+    #[test]
+    fn test_health_status_equality() {
+        assert_eq!(HealthStatus::Healthy, HealthStatus::Healthy);
+        assert_eq!(HealthStatus::Degraded, HealthStatus::Degraded);
+        assert_eq!(HealthStatus::Unavailable, HealthStatus::Unavailable);
+        assert_ne!(HealthStatus::Healthy, HealthStatus::Degraded);
+        assert_ne!(HealthStatus::Healthy, HealthStatus::Unavailable);
+    }
+
+    #[test]
+    fn test_result_quality_equality() {
+        assert_eq!(ResultQuality::FullSuccess, ResultQuality::FullSuccess);
+        assert_eq!(ResultQuality::Degraded, ResultQuality::Degraded);
+        assert_ne!(ResultQuality::FullSuccess, ResultQuality::TotalFailure);
+        assert_ne!(ResultQuality::PartialFailure, ResultQuality::Degraded);
+    }
+
+    #[test]
+    fn test_measurement_result_clone() {
+        let mut counts = HashMap::new();
+        counts.insert("00".to_string(), 500u32);
+        counts.insert("11".to_string(), 500u32);
+
+        let result = MeasurementResult {
+            bitstring_counts: counts,
+            total_shots: 1000,
+            successful_shots: 1000,
+            quality: ResultQuality::FullSuccess,
+            fidelity_estimate: Some(0.99),
+            state_vector: Some(vec![(0.707, 0.0), (0.707, 0.0)]),
+        };
+
+        let cloned = result.clone();
+        assert_eq!(cloned.total_shots, result.total_shots);
+        assert_eq!(cloned.successful_shots, result.successful_shots);
+        assert_eq!(cloned.bitstring_counts, result.bitstring_counts);
+        assert_eq!(cloned.fidelity_estimate, result.fidelity_estimate);
+        assert_eq!(cloned.state_vector, result.state_vector);
+    }
+
+    #[test]
+    fn test_backend_type_copy() {
+        let t = BackendType::Simulator;
+        let t2 = t; // Copy
+        assert_eq!(t, t2); // original still valid
+    }
+}

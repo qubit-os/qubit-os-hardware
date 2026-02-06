@@ -40,5 +40,8 @@ pub mod validation;
 pub use config::Config;
 pub use error::{Error, Result};
 
+#[cfg(test)]
+pub mod test_utils;
+
 /// Library version
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");

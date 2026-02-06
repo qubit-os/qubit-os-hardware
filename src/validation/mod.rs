@@ -439,4 +439,60 @@ mod tests {
         // Invalid - zero duration
         assert!(validate_api_request(&i_env, &q_env, 1000, 0, &[0], 2).is_err());
     }
+
+    #[test]
+    fn test_validate_batch_size_valid() {
+        let limits = ResourceLimits::default();
+        assert!(validate_batch_size(1, &limits).is_ok());
+        assert!(validate_batch_size(limits.max_batch_size as usize, &limits).is_ok());
+    }
+
+    #[test]
+    fn test_validate_batch_size_zero() {
+        let limits = ResourceLimits::default();
+        assert!(validate_batch_size(0, &limits).is_err());
+    }
+
+    #[test]
+    fn test_validate_batch_size_exceeds_limit() {
+        let limits = ResourceLimits::default();
+        assert!(validate_batch_size(limits.max_batch_size as usize + 1, &limits).is_err());
+    }
+
+    #[test]
+    fn test_validate_api_request_mismatched_lengths() {
+        let i_env: Vec<f64> = vec![0.5; 100];
+        let q_env: Vec<f64> = vec![0.5; 50]; // different length
+        let result = validate_api_request(&i_env, &q_env, 1000, 20, &[0], 2);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_validate_api_request_too_many_shots() {
+        let i_env: Vec<f64> = vec![0.5; 10];
+        let q_env: Vec<f64> = vec![0.5; 10];
+        let result = validate_api_request(&i_env, &q_env, MAX_SHOTS + 1, 20, &[0], 2);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_validate_api_request_exceeds_duration() {
+        let i_env: Vec<f64> = vec![0.5; 10];
+        let q_env: Vec<f64> = vec![0.5; 10];
+        let result =
+            validate_api_request(&i_env, &q_env, 100, MAX_PULSE_DURATION_NS + 1, &[0], 2);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_validate_pulse_envelope_q_nan() {
+        let i_env: Vec<f64> = vec![0.0; 100];
+        let mut q_env: Vec<f64> = vec![0.0; 100];
+        q_env[42] = f64::NAN;
+        let result = validate_pulse_envelope(&i_env, &q_env, 100, 100.0);
+        assert!(result.is_err());
+        let msg = format!("{}", result.unwrap_err());
+        assert!(msg.contains("q_envelope"));
+        assert!(msg.contains("NaN"));
+    }
 }

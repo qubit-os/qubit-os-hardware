@@ -508,19 +508,41 @@ async fn get_version() -> Json<VersionResponse> {
 mod tests {
     use super::*;
     use crate::backend::BackendRegistry;
+    use crate::test_utils::{DegradedMockBackend, MockBackend};
+    use axum::body::Body;
+    use http::Request as HttpRequest;
+    use tower::ServiceExt;
+
+    fn test_app(state: Arc<ServerState>) -> Router {
+        Router::new()
+            .route("/api/v1/health", get(health_check))
+            .route("/api/v1/backends", get(list_backends))
+            .route("/api/v1/backends/:name", get(get_backend_info))
+            .route("/api/v1/execute", post(execute_pulse))
+            .route("/api/v1/version", get(get_version))
+            .with_state(state)
+    }
+
+    fn empty_state() -> Arc<ServerState> {
+        Arc::new(ServerState::new(Arc::new(BackendRegistry::default())))
+    }
+
+    fn state_with_mock() -> Arc<ServerState> {
+        let registry = Arc::new(BackendRegistry::default());
+        registry.register(MockBackend::simulator("test"));
+        Arc::new(ServerState::new(registry))
+    }
 
     #[tokio::test]
     async fn test_rest_server_creation() {
         let registry = Arc::new(BackendRegistry::default());
         let state = Arc::new(ServerState::new(registry));
         let _server = RestServer::new(state);
-        // Server created successfully - if we got here without panic, test passed
     }
 
     #[test]
     fn test_cors_layer_restrictive_by_default() {
         let config = CorsConfig::default();
-        // Should not allow all by default
         assert!(!config.allow_all);
     }
 
@@ -528,12 +550,288 @@ mod tests {
     fn test_sanitize_error_message() {
         use crate::error::ValidationError;
 
-        // Validation errors are safe to show
         let ve = Error::Validation(ValidationError::Field {
             field: "test".into(),
             message: "test message".into(),
         });
         let msg = sanitize_error_message(&ve);
         assert!(msg.contains("test"));
+    }
+
+    #[tokio::test]
+    async fn test_health_check_empty_registry() {
+        let app = test_app(empty_state());
+
+        let resp = app
+            .oneshot(
+                HttpRequest::builder()
+                    .uri("/api/v1/health")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body = axum::body::to_bytes(resp.into_body(), 1_000_000).await.unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["status"], "healthy");
+        assert!(json["backends"].as_array().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_health_check_with_backend() {
+        let app = test_app(state_with_mock());
+
+        let resp = app
+            .oneshot(
+                HttpRequest::builder()
+                    .uri("/api/v1/health")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body = axum::body::to_bytes(resp.into_body(), 1_000_000).await.unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["status"], "healthy");
+        let backends = json["backends"].as_array().unwrap();
+        assert_eq!(backends.len(), 1);
+        assert_eq!(backends[0]["name"], "test");
+        assert_eq!(backends[0]["status"], "healthy");
+    }
+
+    #[tokio::test]
+    async fn test_list_backends_empty() {
+        let app = test_app(empty_state());
+
+        let resp = app
+            .oneshot(
+                HttpRequest::builder()
+                    .uri("/api/v1/backends")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body = axum::body::to_bytes(resp.into_body(), 1_000_000).await.unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert!(json["backends"].as_array().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_list_backends_with_mock() {
+        let app = test_app(state_with_mock());
+
+        let resp = app
+            .oneshot(
+                HttpRequest::builder()
+                    .uri("/api/v1/backends")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body = axum::body::to_bytes(resp.into_body(), 1_000_000).await.unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        let backends = json["backends"].as_array().unwrap();
+        assert_eq!(backends.len(), 1);
+        assert_eq!(backends[0]["name"], "test");
+        assert_eq!(backends[0]["backend_type"], "simulator");
+    }
+
+    #[tokio::test]
+    async fn test_get_backend_info_success() {
+        let app = test_app(state_with_mock());
+
+        let resp = app
+            .oneshot(
+                HttpRequest::builder()
+                    .uri("/api/v1/backends/test")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body = axum::body::to_bytes(resp.into_body(), 1_000_000).await.unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["name"], "test");
+        assert_eq!(json["num_qubits"], 2);
+    }
+
+    #[tokio::test]
+    async fn test_get_backend_info_not_found() {
+        let app = test_app(state_with_mock());
+
+        let resp = app
+            .oneshot(
+                HttpRequest::builder()
+                    .uri("/api/v1/backends/nope")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn test_execute_pulse_success() {
+        let app = test_app(state_with_mock());
+
+        let envelope: Vec<f64> = vec![0.1; 10];
+        let payload = serde_json::json!({
+            "i_envelope": envelope,
+            "q_envelope": envelope,
+            "duration_ns": 100,
+            "target_qubits": [0],
+            "num_shots": 1000
+        });
+
+        let resp = app
+            .oneshot(
+                HttpRequest::builder()
+                    .method("POST")
+                    .uri("/api/v1/execute")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&payload).unwrap()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body = axum::body::to_bytes(resp.into_body(), 1_000_000).await.unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["total_shots"], 1000);
+        assert_eq!(json["successful_shots"], 1000);
+    }
+
+    #[tokio::test]
+    async fn test_execute_pulse_validation_error() {
+        let app = test_app(state_with_mock());
+
+        let envelope: Vec<f64> = vec![0.1; 10];
+        let payload = serde_json::json!({
+            "i_envelope": envelope,
+            "q_envelope": envelope,
+            "duration_ns": 100,
+            "target_qubits": [0],
+            "num_shots": 0
+        });
+
+        let resp = app
+            .oneshot(
+                HttpRequest::builder()
+                    .method("POST")
+                    .uri("/api/v1/execute")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&payload).unwrap()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn test_execute_pulse_no_backend() {
+        let app = test_app(empty_state());
+
+        let envelope: Vec<f64> = vec![0.1; 10];
+        let payload = serde_json::json!({
+            "i_envelope": envelope,
+            "q_envelope": envelope,
+            "duration_ns": 100,
+            "target_qubits": [0],
+            "num_shots": 1000
+        });
+
+        let resp = app
+            .oneshot(
+                HttpRequest::builder()
+                    .method("POST")
+                    .uri("/api/v1/execute")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&payload).unwrap()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn test_get_version() {
+        let app = test_app(empty_state());
+
+        let resp = app
+            .oneshot(
+                HttpRequest::builder()
+                    .uri("/api/v1/version")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body = axum::body::to_bytes(resp.into_body(), 1_000_000).await.unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["name"], "QubitOS HAL");
+        assert!(!json["version"].as_str().unwrap().is_empty());
+    }
+
+    #[test]
+    fn test_build_cors_allow_all() {
+        let mut config = CorsConfig::default();
+        config.allow_all = true;
+        // Should not panic — just builds a permissive layer
+        let _layer = build_cors_layer(&config);
+    }
+
+    #[test]
+    fn test_build_cors_specific_origins() {
+        let config = CorsConfig {
+            allow_all: false,
+            allowed_origins: vec!["http://example.com".into()],
+            allowed_methods: vec!["GET".into(), "POST".into()],
+            allowed_headers: vec!["Content-Type".into()],
+        };
+        let _layer = build_cors_layer(&config);
+    }
+
+    #[tokio::test]
+    async fn test_health_check_degraded_backend() {
+        let registry = Arc::new(BackendRegistry::default());
+        registry.register(Arc::new(DegradedMockBackend::new("degraded")));
+        let state = Arc::new(ServerState::new(registry));
+        let app = test_app(state);
+
+        let resp = app
+            .oneshot(
+                HttpRequest::builder()
+                    .uri("/api/v1/health")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body = axum::body::to_bytes(resp.into_body(), 1_000_000).await.unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["status"], "degraded");
     }
 }
