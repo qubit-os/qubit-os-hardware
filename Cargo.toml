@@ -11,7 +11,8 @@ keywords = ["quantum", "computing", "simulation", "pulse", "control"]
 categories = ["science", "simulation"]
 
 [features]
-default = []
+default = ["python"]
+python = ["dep:pyo3"]
 iqm = ["dep:reqwest", "dep:secrecy"]
 
 [dependencies]
@@ -31,8 +32,8 @@ tower-http = { version = "0.6", features = ["cors", "trace"] }
 # HTTP types (needed for tower::Service impl in proto stubs)
 http = "1.1"
 
-# Python interop (for QuTiP)
-pyo3 = { version = "0.25", features = ["auto-initialize"] }
+# Python interop (for QuTiP) - optional
+pyo3 = { version = "0.25", features = ["auto-initialize"], optional = true }
 
 # Serialization
 serde = { version = "1.0", features = ["derive"] }

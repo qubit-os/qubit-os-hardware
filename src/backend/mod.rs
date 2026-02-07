@@ -11,6 +11,7 @@
 
 #[cfg(feature = "iqm")]
 pub mod iqm;
+#[cfg(feature = "python")]
 pub mod qutip;
 pub mod registry;
 pub mod r#trait;

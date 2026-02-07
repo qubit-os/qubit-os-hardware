@@ -29,11 +29,10 @@ use clap::{Parser, Subcommand};
 use tracing::{error, info};
 use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 
-use qubit_os_hardware::{
-    backend::{qutip::QutipBackend, BackendRegistry},
-    config::Config,
-    server, Error, Result, VERSION,
-};
+use qubit_os_hardware::{backend::BackendRegistry, config::Config, server, Error, Result, VERSION};
+
+#[cfg(feature = "python")]
+use qubit_os_hardware::backend::qutip::QutipBackend;
 
 #[cfg(feature = "iqm")]
 use qubit_os_hardware::backend::iqm::IqmBackend;
@@ -241,7 +240,8 @@ fn init_logging(level: &str) {
 fn initialize_backends(config: &Config) -> Result<BackendRegistry> {
     let registry = BackendRegistry::new(&config.backends);
 
-    // Initialize QuTiP backend if enabled
+    // Initialize QuTiP backend if enabled (only when python feature is enabled)
+    #[cfg(feature = "python")]
     if config.backends.qutip_simulator.enabled {
         match QutipBackend::new(&config.backends.qutip_simulator) {
             Ok(backend) => {
