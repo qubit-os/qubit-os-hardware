@@ -6,7 +6,7 @@ on:
     types: [published]
 
 permissions:
-  contents: read
+  contents: write  # Required for uploading release assets
   packages: write
 
 env:
