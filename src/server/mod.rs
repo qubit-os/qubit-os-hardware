@@ -154,7 +154,7 @@ mod tests {
         let registry = Arc::new(BackendRegistry::default());
         let state = ServerState::new(registry.clone());
         // Receiver should start with false (no shutdown)
-        assert_eq!(*state.shutdown_rx.borrow(), false);
+        assert!(!*state.shutdown_rx.borrow());
         // Registry should be the same
         assert!(state.registry.is_empty());
     }
@@ -165,9 +165,9 @@ mod tests {
         let state = ServerState::new(registry);
         let rx = state.shutdown_receiver();
 
-        assert_eq!(*rx.borrow(), false);
+        assert!(!*rx.borrow());
         state.shutdown();
-        assert_eq!(*rx.borrow(), true);
+        assert!(*rx.borrow());
     }
 
     #[test]
@@ -178,8 +178,8 @@ mod tests {
         let rx2 = state.shutdown_receiver();
 
         state.shutdown();
-        assert_eq!(*rx1.borrow(), true);
-        assert_eq!(*rx2.borrow(), true);
+        assert!(*rx1.borrow());
+        assert!(*rx2.borrow());
     }
 
     #[tokio::test]
@@ -196,6 +196,6 @@ mod tests {
 
         // Wait for the change
         rx.changed().await.unwrap();
-        assert_eq!(*rx.borrow(), true);
+        assert!(*rx.borrow());
     }
 }

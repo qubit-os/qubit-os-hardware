@@ -809,8 +809,10 @@ mod tests {
 
     #[test]
     fn test_build_cors_allow_all() {
-        let mut config = CorsConfig::default();
-        config.allow_all = true;
+        let config = CorsConfig {
+            allow_all: true,
+            ..CorsConfig::default()
+        };
         // Should not panic — just builds a permissive layer
         let _layer = build_cors_layer(&config);
     }

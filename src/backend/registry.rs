@@ -309,9 +309,11 @@ mod tests {
 
     #[test]
     fn test_with_limits() {
-        let mut limits = ResourceLimits::default();
-        limits.max_qubits = 20;
-        limits.max_shots = 500_000;
+        let limits = ResourceLimits {
+            max_qubits: 20,
+            max_shots: 500_000,
+            ..ResourceLimits::default()
+        };
 
         let registry = BackendRegistry::with_limits(limits);
         assert_eq!(registry.limits().max_qubits, 20);

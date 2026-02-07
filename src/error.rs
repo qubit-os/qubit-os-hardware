@@ -340,7 +340,7 @@ mod tests {
 
     #[test]
     fn test_error_source_io() {
-        let e = Error::Io(std::io::Error::new(std::io::ErrorKind::Other, "disk"));
+        let e = Error::Io(std::io::Error::other("disk"));
         assert!(e.source().is_some());
     }
 
@@ -499,7 +499,7 @@ mod tests {
 
     #[test]
     fn test_to_tonic_status_io() {
-        let e = Error::Io(std::io::Error::new(std::io::ErrorKind::Other, "x"));
+        let e = Error::Io(std::io::Error::other("x"));
         let s: tonic::Status = e.into();
         assert_eq!(s.code(), tonic::Code::Internal);
     }
