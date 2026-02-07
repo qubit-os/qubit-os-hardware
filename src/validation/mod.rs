@@ -479,8 +479,7 @@ mod tests {
     fn test_validate_api_request_exceeds_duration() {
         let i_env: Vec<f64> = vec![0.5; 10];
         let q_env: Vec<f64> = vec![0.5; 10];
-        let result =
-            validate_api_request(&i_env, &q_env, 100, MAX_PULSE_DURATION_NS + 1, &[0], 2);
+        let result = validate_api_request(&i_env, &q_env, 100, MAX_PULSE_DURATION_NS + 1, &[0], 2);
         assert!(result.is_err());
     }
 

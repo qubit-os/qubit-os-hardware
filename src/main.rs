@@ -262,7 +262,7 @@ fn initialize_backends(config: &Config) -> Result<BackendRegistry> {
     // Initialize IQM backend if enabled (only when iqm feature is enabled)
     #[cfg(feature = "iqm")]
     if config.backends.iqm_garnet.enabled {
-        match IqmBackend::new(&config.backends.iqm_garnet) {
+        match IqmBackend::from_config(&config.backends.iqm_garnet) {
             Ok(backend) => {
                 info!("IQM backend initialized");
                 registry.register(Arc::new(backend));

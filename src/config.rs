@@ -354,6 +354,18 @@ pub struct IqmConfig {
     /// Request timeout in seconds
     #[serde(default = "default_iqm_timeout")]
     pub timeout_sec: u64,
+
+    /// Maximum number of retries for transient errors
+    #[serde(default = "default_max_retries")]
+    pub max_retries: u32,
+
+    /// Base delay between retries in milliseconds
+    #[serde(default = "default_retry_base_delay_ms")]
+    pub retry_base_delay_ms: u64,
+
+    /// Calibration set ID (optional, uses latest if None)
+    #[serde(default)]
+    pub calibration_set_id: Option<String>,
 }
 
 impl Default for IqmConfig {
@@ -363,12 +375,23 @@ impl Default for IqmConfig {
             gateway_url: None,
             auth_token: None,
             timeout_sec: default_iqm_timeout(),
+            max_retries: default_max_retries(),
+            retry_base_delay_ms: default_retry_base_delay_ms(),
+            calibration_set_id: None,
         }
     }
 }
 
 fn default_iqm_timeout() -> u64 {
     30
+}
+
+fn default_max_retries() -> u32 {
+    3
+}
+
+fn default_retry_base_delay_ms() -> u64 {
+    500
 }
 
 /// Calibration configuration.

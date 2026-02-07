@@ -1,0 +1,17 @@
+warning: failed to auto-clean cache data
+
+failed to clean entries from the global cache
+
+Caused by:
+  failed to remove file `/home/rylan/.cargo/registry/src/index.crates.io-6f17d22bba15001f/serde-1.0.216/Cargo.toml.orig`
+
+Caused by:
+  Permission denied (os error 13)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.16s
+     Running unittests src/lib.rs (target/debug/deps/qubit_os_hardware-c5db960a85345cb9)
+/home/rylan/dev/research/qubit-os/qubit-os-hardware/target/debug/deps/qubit_os_hardware-c5db960a85345cb9: error while loading shared libraries: libpython3.14.so.1.0: cannot open shared object file: No such file or directory
+error: test failed, to rerun pass `--lib`
+
+Caused by:
+  process didn't exit successfully: `/home/rylan/dev/research/qubit-os/qubit-os-hardware/target/debug/deps/qubit_os_hardware-c5db960a85345cb9` (exit status: 127)
+note: test exited abnormally; to see the full output pass --no-capture to the harness.

@@ -306,10 +306,7 @@ mod tests {
     #[test]
     fn test_validation_error_display_physics_constraint() {
         let e = ValidationError::PhysicsConstraint("non-unitary".into());
-        assert_eq!(
-            e.to_string(),
-            "Physics constraint violated: non-unitary"
-        );
+        assert_eq!(e.to_string(), "Physics constraint violated: non-unitary");
     }
 
     #[test]

@@ -444,9 +444,7 @@ mod tests {
     async fn test_get_hardware_info_default() {
         let svc = make_service(state_with_mock());
         let resp = svc
-            .get_hardware_info(Request::new(GetHardwareInfoRequest {
-                backend_name: None,
-            }))
+            .get_hardware_info(Request::new(GetHardwareInfoRequest { backend_name: None }))
             .await
             .unwrap();
 
@@ -472,9 +470,7 @@ mod tests {
     async fn test_health_check_all_healthy() {
         let svc = make_service(state_with_mock());
         let resp = svc
-            .health_check(Request::new(HealthCheckRequest {
-                backend_name: None,
-            }))
+            .health_check(Request::new(HealthCheckRequest { backend_name: None }))
             .await
             .unwrap();
 
@@ -492,9 +488,7 @@ mod tests {
 
         let svc = make_service(state);
         let resp = svc
-            .health_check(Request::new(HealthCheckRequest {
-                backend_name: None,
-            }))
+            .health_check(Request::new(HealthCheckRequest { backend_name: None }))
             .await
             .unwrap();
 
