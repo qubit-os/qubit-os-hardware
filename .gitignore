@@ -27,3 +27,4 @@ config.local.yaml
 *.profdata
 lcov.info
 coverage/
+test_output.txt
