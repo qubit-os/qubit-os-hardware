@@ -10,6 +10,8 @@ on:
 env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: 1
+  # Tell pyo3 to use the setup-python interpreter (not linuxbrew)
+  PYO3_PYTHON: python3
 
 jobs:
   check:
