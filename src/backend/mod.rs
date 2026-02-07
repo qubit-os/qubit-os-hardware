@@ -6,8 +6,8 @@
 //! This module provides the [`QuantumBackend`] trait and implementations for
 //! various quantum backends:
 //!
-//! - [`qutip::QutipBackend`]: Local QuTiP simulator
-//! - [`iqm::IqmBackend`]: IQM Garnet hardware backend (requires `iqm` feature)
+//! - `qutip::QutipBackend`: Local QuTiP simulator (requires `python` feature)
+//! - `iqm::IqmBackend`: IQM Garnet hardware backend (requires `iqm` feature)
 
 #[cfg(feature = "iqm")]
 pub mod iqm;
