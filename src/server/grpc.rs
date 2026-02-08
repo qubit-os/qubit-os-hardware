@@ -276,6 +276,8 @@ async fn execute_single_pulse(
         state_vector: proto_state_vector,
         noise_applied: None,
         timing: None,
+        predicted_fidelity: 0.0,
+        error_budget: None,
     };
 
     let response = ExecutePulseResponse {

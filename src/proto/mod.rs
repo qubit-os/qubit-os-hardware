@@ -13,6 +13,7 @@
 //! quantum::common::v1   - TraceContext, Timestamp, Error
 //! quantum::pulse::v1    - PulseShape, GateType, HamiltonianSpec
 //! quantum::backend::v1  - ExecutePulseRequest/Response, service trait
+//! quantum::error::v1    - ErrorBudget, ErrorSource, ErrorContribution
 //! ```
 
 pub mod quantum {
@@ -33,9 +34,16 @@ pub mod quantum {
             include!("generated/quantum.backend.v1.rs");
         }
     }
+
+    pub mod error {
+        pub mod v1 {
+            include!("generated/quantum.error.v1.rs");
+        }
+    }
 }
 
 // Re-exports for convenience
 pub use quantum::backend::v1::*;
 pub use quantum::common::v1 as common;
 pub use quantum::pulse::v1 as pulse;
+pub use quantum::error::v1 as error;

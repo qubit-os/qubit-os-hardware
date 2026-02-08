@@ -116,6 +116,15 @@ pub struct MeasurementResult {
     /// Execution timing statistics.
     #[prost(message, optional, tag = "12")]
     pub timing: ::core::option::Option<ExecutionTiming>,
+    /// Predicted fidelity from error budget analysis (if computed).
+    /// 0.0 if not computed.
+    #[prost(double, tag = "13")]
+    pub predicted_fidelity: f64,
+    /// Full error budget analysis (if requested).
+    #[prost(message, optional, tag = "14")]
+    pub error_budget: ::core::option::Option<
+        super::super::error::v1::ErrorBudgetSummary,
+    >,
 }
 /// Nested message and enum types in `MeasurementResult`.
 pub mod measurement_result {
