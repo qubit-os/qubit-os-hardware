@@ -552,6 +552,7 @@ fn default_max_grape_iterations() -> u32 {
 mod tests {
     use super::*;
     use std::io::Write as _;
+    use serial_test::serial;
 
     #[test]
     fn test_default_config() {
@@ -580,6 +581,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_config_load_from_file() {
         let mut f = tempfile::NamedTempFile::new().unwrap();
         writeln!(
@@ -617,6 +619,7 @@ server:
     }
 
     #[test]
+    #[serial]
     fn test_env_override_host() {
         let mut config = Config::default();
         std::env::set_var("QUBITOS_HAL_HOST", "0.0.0.0");
@@ -626,6 +629,7 @@ server:
     }
 
     #[test]
+    #[serial]
     fn test_env_override_grpc_port() {
         let mut config = Config::default();
         std::env::set_var("QUBITOS_HAL_GRPC_PORT", "12345");
@@ -635,6 +639,7 @@ server:
     }
 
     #[test]
+    #[serial]
     fn test_env_override_rest_port() {
         let mut config = Config::default();
         std::env::set_var("QUBITOS_HAL_REST_PORT", "8888");
@@ -644,6 +649,7 @@ server:
     }
 
     #[test]
+    #[serial]
     fn test_env_override_log_level() {
         let mut config = Config::default();
         std::env::set_var("QUBITOS_LOG_LEVEL", "debug");
@@ -653,6 +659,7 @@ server:
     }
 
     #[test]
+    #[serial]
     fn test_env_override_strict_validation() {
         let mut config = Config::default();
         std::env::set_var("QUBITOS_STRICT_VALIDATION", "false");
@@ -668,6 +675,7 @@ server:
     }
 
     #[test]
+    #[serial]
     fn test_env_override_cors_origins() {
         let mut config = Config::default();
         std::env::set_var("QUBITOS_CORS_ALLOWED_ORIGINS", "http://a.com, http://b.com");
