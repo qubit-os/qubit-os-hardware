@@ -67,8 +67,8 @@ impl From<ValidationError> for Error {
     }
 }
 
-impl From<serde_yaml::Error> for Error {
-    fn from(e: serde_yaml::Error) -> Self {
+impl From<serde_yml::Error> for Error {
+    fn from(e: serde_yml::Error) -> Self {
         Error::Serialization(e.to_string())
     }
 }
@@ -401,7 +401,7 @@ mod tests {
 
     #[test]
     fn test_from_serde_yaml_error() {
-        let yaml_err = serde_yaml::from_str::<serde_yaml::Value>("{{{{").unwrap_err();
+        let yaml_err = serde_yml::from_str::<serde_yml::Value>("{{{{").unwrap_err();
         let e: Error = yaml_err.into();
         assert!(matches!(e, Error::Serialization(_)));
     }

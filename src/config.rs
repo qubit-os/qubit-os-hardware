@@ -50,7 +50,7 @@ impl Config {
         if let Some(path) = config_path {
             if path.exists() {
                 let content = std::fs::read_to_string(path)?;
-                config = serde_yaml::from_str(&content)?;
+                config = serde_yml::from_str(&content)?;
             }
         } else {
             // Try default locations
@@ -58,7 +58,7 @@ impl Config {
                 let path = Path::new(path);
                 if path.exists() {
                     let content = std::fs::read_to_string(path)?;
-                    config = serde_yaml::from_str(&content)?;
+                    config = serde_yml::from_str(&content)?;
                     break;
                 }
             }

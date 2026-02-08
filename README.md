@@ -127,19 +127,17 @@ src/
 ├── lib.rs            # Library exports
 ├── config.rs         # Configuration handling
 ├── server/
-│   ├── mod.rs
+│   └── mod.rs        # All validation logic
 │   ├── grpc.rs       # gRPC service implementation
 │   └── rest.rs       # REST API facade
 ├── backend/
-│   ├── mod.rs
+│   └── mod.rs        # All validation logic
 │   ├── trait.rs      # QuantumBackend trait
 │   ├── registry.rs   # Backend registration
 │   ├── qutip/        # QuTiP simulator backend
 │   └── iqm/          # IQM hardware backend
 ├── validation/
-│   ├── mod.rs
-│   ├── pulse.rs      # Pulse validation
-│   └── hamiltonian.rs
+│   └── mod.rs        # All validation logic
 └── error.rs          # Error types
 ```
 

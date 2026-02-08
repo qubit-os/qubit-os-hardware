@@ -206,7 +206,7 @@ async fn main() -> Result<()> {
 
         Commands::Config => {
             // Show effective configuration
-            println!("{}", serde_yaml::to_string(&config)?);
+            println!("{}", serde_yml::to_string(&config)?);
         }
 
         Commands::Validate => {
