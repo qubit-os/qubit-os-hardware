@@ -65,7 +65,6 @@ pub struct PulseSequence {
     pub awg_config: Option<AWGClockConfig>,
 }
 
-
 impl PulseSequence {
     /// Create a new empty pulse sequence.
     pub fn new() -> Self {
@@ -113,9 +112,7 @@ impl PulseSequence {
     ) -> Result<&mut Self, String> {
         // Unique ID check
         if self.pulse_by_id(&pulse_id).is_some() {
-            return Err(format!(
-                "Pulse ID '{pulse_id}' already exists in sequence"
-            ));
+            return Err(format!("Pulse ID '{pulse_id}' already exists in sequence"));
         }
 
         // Build TimePoints (quantize if AWG config present)
@@ -173,29 +170,15 @@ impl PulseSequence {
     ///
     /// - Referenced pulse ID not found
     /// - Constraint is violated
-    pub fn add_constraint(
-        &mut self,
-        constraint: TemporalConstraint,
-    ) -> Result<&mut Self, String> {
+    pub fn add_constraint(&mut self, constraint: TemporalConstraint) -> Result<&mut Self, String> {
         let pa = self
             .pulse_by_id(&constraint.pulse_a_id)
-            .ok_or_else(|| {
-                format!(
-                    "Pulse '{}' not found in sequence",
-                    constraint.pulse_a_id
-                )
-            })?;
+            .ok_or_else(|| format!("Pulse '{}' not found in sequence", constraint.pulse_a_id))?;
         let pb = self
             .pulse_by_id(&constraint.pulse_b_id)
-            .ok_or_else(|| {
-                format!(
-                    "Pulse '{}' not found in sequence",
-                    constraint.pulse_b_id
-                )
-            })?;
+            .ok_or_else(|| format!("Pulse '{}' not found in sequence", constraint.pulse_b_id))?;
 
-        let jitter =
-            pa.start_time.jitter_bound_ns + pb.start_time.jitter_bound_ns;
+        let jitter = pa.start_time.jitter_bound_ns + pb.start_time.jitter_bound_ns;
 
         constraint.check(
             pa.start_time.quantized_ns(),
@@ -238,8 +221,7 @@ impl PulseSequence {
                     continue;
                 }
             };
-            let jitter =
-                pa.start_time.jitter_bound_ns + pb.start_time.jitter_bound_ns;
+            let jitter = pa.start_time.jitter_bound_ns + pb.start_time.jitter_bound_ns;
             if let Err(msg) = c.check(
                 pa.start_time.quantized_ns(),
                 pa.duration.quantized_ns(),
@@ -264,12 +246,7 @@ impl PulseSequence {
                     .iter()
                     .copied()
                     .collect::<HashSet<_>>()
-                    .intersection(
-                        &pb.qubit_indices
-                            .iter()
-                            .copied()
-                            .collect::<HashSet<_>>(),
-                    )
+                    .intersection(&pb.qubit_indices.iter().copied().collect::<HashSet<_>>())
                     .copied()
                     .collect();
 
@@ -383,9 +360,7 @@ mod tests {
         let mut seq = PulseSequence::with_awg(test_awg());
         seq.append("a".into(), vec![0], 0.0, 20.0).unwrap();
         // 20 ns at 2 GHz = 40 samples -> quantized to 20.0 ns
-        assert!(
-            (seq.pulses[0].duration.quantized_ns() - 20.0).abs() < 1e-9
-        );
+        assert!((seq.pulses[0].duration.quantized_ns() - 20.0).abs() < 1e-9);
     }
 
     #[test]
@@ -393,9 +368,7 @@ mod tests {
         let mut seq = PulseSequence::with_awg(test_awg());
         // 10.3 ns -> 21 samples -> 10.5 ns
         seq.append("a".into(), vec![0], 0.0, 10.3).unwrap();
-        assert!(
-            (seq.pulses[0].duration.quantized_ns() - 10.5).abs() < 1e-9
-        );
+        assert!((seq.pulses[0].duration.quantized_ns() - 10.5).abs() < 1e-9);
     }
 
     // =========================================================================
@@ -435,14 +408,9 @@ mod tests {
         seq.append("a".into(), vec![0], 0.0, 20.0).unwrap();
         seq.append("b".into(), vec![0], 20.0, 20.0).unwrap();
 
-        let c = TemporalConstraint::new(
-            ConstraintKind::Sequential,
-            "a".into(),
-            "b".into(),
-            0.0,
-            0.5,
-        )
-        .unwrap();
+        let c =
+            TemporalConstraint::new(ConstraintKind::Sequential, "a".into(), "b".into(), 0.0, 0.5)
+                .unwrap();
         assert!(seq.add_constraint(c).is_ok());
         assert_eq!(seq.constraints.len(), 1);
     }
@@ -471,14 +439,9 @@ mod tests {
         seq.append("a".into(), vec![0], 0.0, 20.0).unwrap();
         seq.append("b".into(), vec![0], 10.0, 20.0).unwrap();
 
-        let c = TemporalConstraint::new(
-            ConstraintKind::Sequential,
-            "a".into(),
-            "b".into(),
-            0.0,
-            0.5,
-        )
-        .unwrap();
+        let c =
+            TemporalConstraint::new(ConstraintKind::Sequential, "a".into(), "b".into(), 0.0, 0.5)
+                .unwrap();
         let result = seq.add_constraint(c);
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("SEQUENTIAL"));

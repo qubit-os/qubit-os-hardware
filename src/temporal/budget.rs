@@ -144,9 +144,7 @@ impl DecoherenceBudget {
         self.qubit_time_ns
             .keys()
             .map(|&q| (q, self.t2_fraction(q)))
-            .max_by(|a, b| {
-                a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal)
-            })
+            .max_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal))
     }
 
     /// Check all qubits against warning and blocking thresholds.
@@ -214,8 +212,7 @@ impl DecoherenceBudget {
         match self.t2_us.get(&qubit) {
             Some(&t2) if t2 > 0.0 => {
                 let new_total =
-                    self.qubit_time_ns.get(&qubit).copied().unwrap_or(0.0)
-                        + duration_ns;
+                    self.qubit_time_ns.get(&qubit).copied().unwrap_or(0.0) + duration_ns;
                 let new_frac = 1.0 - (-new_total / (t2 * 1000.0)).exp();
                 new_frac < self.block_fraction
             }
@@ -252,22 +249,19 @@ mod tests {
 
     #[test]
     fn test_new_bad_warn_fraction() {
-        let result =
-            DecoherenceBudget::new(HashMap::new(), HashMap::new(), 0.0, 0.8);
+        let result = DecoherenceBudget::new(HashMap::new(), HashMap::new(), 0.0, 0.8);
         assert!(result.is_err());
     }
 
     #[test]
     fn test_new_bad_block_fraction() {
-        let result =
-            DecoherenceBudget::new(HashMap::new(), HashMap::new(), 0.3, 0.0);
+        let result = DecoherenceBudget::new(HashMap::new(), HashMap::new(), 0.3, 0.0);
         assert!(result.is_err());
     }
 
     #[test]
     fn test_new_warn_ge_block() {
-        let result =
-            DecoherenceBudget::new(HashMap::new(), HashMap::new(), 0.8, 0.3);
+        let result = DecoherenceBudget::new(HashMap::new(), HashMap::new(), 0.8, 0.3);
         assert!(result.is_err());
     }
 

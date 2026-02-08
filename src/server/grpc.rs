@@ -24,13 +24,13 @@ use crate::backend::ExecutePulseRequest as BackendRequest;
 use crate::config::ServerConfig;
 use crate::error::{Error, Result};
 use crate::proto::quantum::backend::v1::{
-    quantum_backend_service_server::{QuantumBackendService, QuantumBackendServiceServer},
-    ExecutePulseBatchRequest, ExecutePulseBatchResponse, ExecutePulseRequest,
-    ExecutePulseResponse, GetHardwareInfoRequest, GetHardwareInfoResponse,
-    HealthRequest, HealthResponse, ListBackendsRequest, ListBackendsResponse,
-    MeasurementResult as ProtoMeasurementResult, StateVector as ProtoStateVector,
     health_response::Status as ProtoHealthStatus,
     measurement_result::Quality as ProtoQuality,
+    quantum_backend_service_server::{QuantumBackendService, QuantumBackendServiceServer},
+    ExecutePulseBatchRequest, ExecutePulseBatchResponse, ExecutePulseRequest, ExecutePulseResponse,
+    GetHardwareInfoRequest, GetHardwareInfoResponse, HealthRequest, HealthResponse,
+    ListBackendsRequest, ListBackendsResponse, MeasurementResult as ProtoMeasurementResult,
+    StateVector as ProtoStateVector,
 };
 use crate::validation::{validate_api_request, MAX_QUBITS};
 
@@ -121,10 +121,7 @@ fn i32_vec_to_u32(values: &[i32], field: &str) -> std::result::Result<Vec<u32>, 
         .iter()
         .map(|&v| {
             u32::try_from(v).map_err(|_| {
-                Status::invalid_argument(format!(
-                    "{} contains negative value: {}",
-                    field, v
-                ))
+                Status::invalid_argument(format!("{} contains negative value: {}", field, v))
             })
         })
         .collect()
@@ -141,14 +138,8 @@ fn quality_to_proto(quality: crate::backend::ResultQuality) -> i32 {
 }
 
 /// Convert domain state_vector Vec<(f64,f64)> to proto StateVector.
-fn state_vector_to_proto(
-    sv: &[(f64, f64)],
-    num_qubits: u32,
-) -> ProtoStateVector {
-    let amplitudes: Vec<f64> = sv
-        .iter()
-        .flat_map(|(re, im)| [*re, *im])
-        .collect();
+fn state_vector_to_proto(sv: &[(f64, f64)], num_qubits: u32) -> ProtoStateVector {
+    let amplitudes: Vec<f64> = sv.iter().flat_map(|(re, im)| [*re, *im]).collect();
     ProtoStateVector {
         amplitudes,
         num_qubits: num_qubits as i32,
@@ -162,22 +153,16 @@ async fn execute_single_pulse(
     req: ExecutePulseRequest,
 ) -> std::result::Result<Response<ExecutePulseResponse>, Status> {
     // Extract the nested PulseShape (required field)
-    let pulse = req.pulse.ok_or_else(|| {
-        Status::invalid_argument("pulse field is required")
-    })?;
+    let pulse = req
+        .pulse
+        .ok_or_else(|| Status::invalid_argument("pulse field is required"))?;
 
     // Convert i32 -> u32 at the proto boundary
     let num_shots = i32_to_u32(req.num_shots, "num_shots")?;
     let duration_ns = i32_to_u32(pulse.duration_ns, "duration_ns")?;
     let num_time_steps = i32_to_u32(pulse.num_time_steps, "num_time_steps")?;
-    let target_qubits = i32_vec_to_u32(
-        &pulse.target_qubit_indices,
-        "target_qubit_indices",
-    )?;
-    let measurement_qubits = i32_vec_to_u32(
-        &req.measurement_qubits,
-        "measurement_qubits",
-    )?;
+    let target_qubits = i32_vec_to_u32(&pulse.target_qubit_indices, "target_qubit_indices")?;
+    let measurement_qubits = i32_vec_to_u32(&req.measurement_qubits, "measurement_qubits")?;
 
     // Use measurement_qubits if provided, otherwise use pulse target qubits
     let qubits_for_validation = if measurement_qubits.is_empty() {
@@ -242,18 +227,16 @@ async fn execute_single_pulse(
     };
 
     // Execute
-    let result = backend
-        .execute_pulse(backend_request)
-        .await
-        .map_err(|e| {
-            error!(error = %e, "Pulse execution failed");
-            Status::from(Error::from(e))
-        })?;
+    let result = backend.execute_pulse(backend_request).await.map_err(|e| {
+        error!(error = %e, "Pulse execution failed");
+        Status::from(Error::from(e))
+    })?;
 
     // Convert domain result to proto
-    let proto_state_vector = result.state_vector.as_ref().map(|sv| {
-        state_vector_to_proto(sv, backend_info.num_qubits)
-    });
+    let proto_state_vector = result
+        .state_vector
+        .as_ref()
+        .map(|sv| state_vector_to_proto(sv, backend_info.num_qubits));
 
     let proto_result = ProtoMeasurementResult {
         bitstring_counts: result
@@ -417,11 +400,7 @@ impl QuantumBackendService for GrpcBackendService {
                 },
                 tier: info.tier,
                 num_qubits: info.num_qubits as i32,
-                available_qubit_indices: info
-                    .available_qubits
-                    .iter()
-                    .map(|&q| q as i32)
-                    .collect(),
+                available_qubit_indices: info.available_qubits.iter().map(|&q| q as i32).collect(),
                 supported_gates: info
                     .supported_gates
                     .iter()
@@ -561,8 +540,8 @@ impl QuantumBackendService for GrpcBackendService {
 mod tests {
     use super::*;
     use crate::backend::BackendRegistry;
-    use crate::proto::quantum::backend::v1::quantum_backend_service_server::QuantumBackendService as QBTrait;
     use crate::proto::pulse::PulseShape;
+    use crate::proto::quantum::backend::v1::quantum_backend_service_server::QuantumBackendService as QBTrait;
     use crate::test_utils::{DegradedMockBackend, MockBackend};
 
     fn empty_state() -> Arc<ServerState> {

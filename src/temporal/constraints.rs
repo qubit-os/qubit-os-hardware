@@ -84,9 +84,7 @@ impl TemporalConstraint {
             ));
         }
         if pulse_a_id == pulse_b_id {
-            return Err(
-                "A constraint cannot reference the same pulse for both A and B".into(),
-            );
+            return Err("A constraint cannot reference the same pulse for both A and B".into());
         }
         if kind == ConstraintKind::Aligned
             && !(0.0 < alignment_fraction && alignment_fraction < 1.0)
@@ -234,51 +232,28 @@ mod tests {
 
     #[test]
     fn test_new_same_pulse_ids() {
-        let c = TemporalConstraint::new(
-            ConstraintKind::Sequential,
-            "a".into(),
-            "a".into(),
-            0.0,
-            0.5,
-        );
+        let c =
+            TemporalConstraint::new(ConstraintKind::Sequential, "a".into(), "a".into(), 0.0, 0.5);
         assert!(c.is_err());
         assert!(c.unwrap_err().contains("same pulse"));
     }
 
     #[test]
     fn test_new_aligned_bad_fraction_zero() {
-        let c = TemporalConstraint::new(
-            ConstraintKind::Aligned,
-            "a".into(),
-            "b".into(),
-            0.0,
-            0.0,
-        );
+        let c = TemporalConstraint::new(ConstraintKind::Aligned, "a".into(), "b".into(), 0.0, 0.0);
         assert!(c.is_err());
         assert!(c.unwrap_err().contains("alignment_fraction"));
     }
 
     #[test]
     fn test_new_aligned_bad_fraction_one() {
-        let c = TemporalConstraint::new(
-            ConstraintKind::Aligned,
-            "a".into(),
-            "b".into(),
-            0.0,
-            1.0,
-        );
+        let c = TemporalConstraint::new(ConstraintKind::Aligned, "a".into(), "b".into(), 0.0, 1.0);
         assert!(c.is_err());
     }
 
     #[test]
     fn test_new_aligned_valid_fraction() {
-        let c = TemporalConstraint::new(
-            ConstraintKind::Aligned,
-            "a".into(),
-            "b".into(),
-            0.1,
-            0.5,
-        );
+        let c = TemporalConstraint::new(ConstraintKind::Aligned, "a".into(), "b".into(), 0.1, 0.5);
         assert!(c.is_ok());
     }
 
@@ -347,42 +322,27 @@ mod tests {
 
     #[test]
     fn test_sequential_valid() {
-        let c = TemporalConstraint::new(
-            ConstraintKind::Sequential,
-            "a".into(),
-            "b".into(),
-            0.0,
-            0.5,
-        )
-        .unwrap();
+        let c =
+            TemporalConstraint::new(ConstraintKind::Sequential, "a".into(), "b".into(), 0.0, 0.5)
+                .unwrap();
         // A: 10-30, B starts at 30 -> gap = 0 >= 0
         assert!(c.check(10.0, 20.0, 30.0, 10.0, 0.0).is_ok());
     }
 
     #[test]
     fn test_sequential_with_min_gap() {
-        let c = TemporalConstraint::new(
-            ConstraintKind::Sequential,
-            "a".into(),
-            "b".into(),
-            5.0,
-            0.5,
-        )
-        .unwrap();
+        let c =
+            TemporalConstraint::new(ConstraintKind::Sequential, "a".into(), "b".into(), 5.0, 0.5)
+                .unwrap();
         // A: 10-30, B starts at 36 -> gap = 6 >= 5
         assert!(c.check(10.0, 20.0, 36.0, 10.0, 0.0).is_ok());
     }
 
     #[test]
     fn test_sequential_violated() {
-        let c = TemporalConstraint::new(
-            ConstraintKind::Sequential,
-            "a".into(),
-            "b".into(),
-            5.0,
-            0.5,
-        )
-        .unwrap();
+        let c =
+            TemporalConstraint::new(ConstraintKind::Sequential, "a".into(), "b".into(), 5.0, 0.5)
+                .unwrap();
         // A: 10-30, B starts at 33 -> gap = 3 < 5
         let result = c.check(10.0, 20.0, 33.0, 10.0, 0.0);
         assert!(result.is_err());
@@ -391,14 +351,9 @@ mod tests {
 
     #[test]
     fn test_sequential_jitter_loosens() {
-        let c = TemporalConstraint::new(
-            ConstraintKind::Sequential,
-            "a".into(),
-            "b".into(),
-            5.0,
-            0.5,
-        )
-        .unwrap();
+        let c =
+            TemporalConstraint::new(ConstraintKind::Sequential, "a".into(), "b".into(), 5.0, 0.5)
+                .unwrap();
         // A: 10-30, B starts at 33 -> gap=3, min_gap = 5-3=2 -> 3 >= 2 -> ok
         assert!(c.check(10.0, 20.0, 33.0, 10.0, 3.0).is_ok());
     }
@@ -409,14 +364,8 @@ mod tests {
 
     #[test]
     fn test_aligned_exact_center() {
-        let c = TemporalConstraint::new(
-            ConstraintKind::Aligned,
-            "a".into(),
-            "b".into(),
-            0.1,
-            0.5,
-        )
-        .unwrap();
+        let c = TemporalConstraint::new(ConstraintKind::Aligned, "a".into(), "b".into(), 0.1, 0.5)
+            .unwrap();
         // A starts at 0, duration 20 -> center at 10
         // B starts at 5, duration 10 -> midpoint at 10
         assert!(c.check(0.0, 20.0, 5.0, 10.0, 0.0).is_ok());
@@ -424,14 +373,8 @@ mod tests {
 
     #[test]
     fn test_aligned_violated() {
-        let c = TemporalConstraint::new(
-            ConstraintKind::Aligned,
-            "a".into(),
-            "b".into(),
-            0.1,
-            0.5,
-        )
-        .unwrap();
+        let c = TemporalConstraint::new(ConstraintKind::Aligned, "a".into(), "b".into(), 0.1, 0.5)
+            .unwrap();
         // A: 0-20, center at 10. B: 0-10, midpoint at 5. diff = 5 > 0.1
         let result = c.check(0.0, 20.0, 0.0, 10.0, 0.0);
         assert!(result.is_err());
@@ -444,28 +387,17 @@ mod tests {
 
     #[test]
     fn test_max_delay_valid() {
-        let c = TemporalConstraint::new(
-            ConstraintKind::MaxDelay,
-            "a".into(),
-            "b".into(),
-            10.0,
-            0.5,
-        )
-        .unwrap();
+        let c =
+            TemporalConstraint::new(ConstraintKind::MaxDelay, "a".into(), "b".into(), 10.0, 0.5)
+                .unwrap();
         // A: 0-20, B starts at 25 -> gap = 5 <= 10
         assert!(c.check(0.0, 20.0, 25.0, 10.0, 0.0).is_ok());
     }
 
     #[test]
     fn test_max_delay_violated() {
-        let c = TemporalConstraint::new(
-            ConstraintKind::MaxDelay,
-            "a".into(),
-            "b".into(),
-            5.0,
-            0.5,
-        )
-        .unwrap();
+        let c = TemporalConstraint::new(ConstraintKind::MaxDelay, "a".into(), "b".into(), 5.0, 0.5)
+            .unwrap();
         // A: 0-20, B starts at 30 -> gap = 10 > 5
         let result = c.check(0.0, 20.0, 30.0, 10.0, 0.0);
         assert!(result.is_err());
@@ -478,42 +410,24 @@ mod tests {
 
     #[test]
     fn test_min_gap_a_before_b() {
-        let c = TemporalConstraint::new(
-            ConstraintKind::MinGap,
-            "a".into(),
-            "b".into(),
-            5.0,
-            0.5,
-        )
-        .unwrap();
+        let c = TemporalConstraint::new(ConstraintKind::MinGap, "a".into(), "b".into(), 5.0, 0.5)
+            .unwrap();
         // A: 0-20, B: 26-36 -> gap = 26-20 = 6 >= 5
         assert!(c.check(0.0, 20.0, 26.0, 10.0, 0.0).is_ok());
     }
 
     #[test]
     fn test_min_gap_b_before_a() {
-        let c = TemporalConstraint::new(
-            ConstraintKind::MinGap,
-            "a".into(),
-            "b".into(),
-            5.0,
-            0.5,
-        )
-        .unwrap();
+        let c = TemporalConstraint::new(ConstraintKind::MinGap, "a".into(), "b".into(), 5.0, 0.5)
+            .unwrap();
         // B: 0-10, A starts at 16 -> gap = 16-10 = 6 >= 5
         assert!(c.check(16.0, 20.0, 0.0, 10.0, 0.0).is_ok());
     }
 
     #[test]
     fn test_min_gap_violated() {
-        let c = TemporalConstraint::new(
-            ConstraintKind::MinGap,
-            "a".into(),
-            "b".into(),
-            10.0,
-            0.5,
-        )
-        .unwrap();
+        let c = TemporalConstraint::new(ConstraintKind::MinGap, "a".into(), "b".into(), 10.0, 0.5)
+            .unwrap();
         // A: 0-20, B: 25-35 -> gap = 5 < 10
         let result = c.check(0.0, 20.0, 25.0, 10.0, 0.0);
         assert!(result.is_err());
@@ -522,14 +436,8 @@ mod tests {
 
     #[test]
     fn test_min_gap_jitter_tightens() {
-        let c = TemporalConstraint::new(
-            ConstraintKind::MinGap,
-            "a".into(),
-            "b".into(),
-            5.0,
-            0.5,
-        )
-        .unwrap();
+        let c = TemporalConstraint::new(ConstraintKind::MinGap, "a".into(), "b".into(), 5.0, 0.5)
+            .unwrap();
         // A: 0-20, B: 26-36 -> gap=6. min_required = 5+2=7 -> 6 < 7 -> violated
         let result = c.check(0.0, 20.0, 26.0, 10.0, 2.0);
         assert!(result.is_err());

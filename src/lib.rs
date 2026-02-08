@@ -35,8 +35,8 @@ pub mod config;
 pub mod error;
 pub mod proto;
 pub mod server;
-pub mod validation;
 pub mod temporal;
+pub mod validation;
 
 pub use config::Config;
 pub use error::{Error, Result};

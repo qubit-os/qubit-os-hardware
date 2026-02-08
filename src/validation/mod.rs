@@ -336,7 +336,6 @@ pub fn validate_api_request(
     Ok(())
 }
 
-
 /// Validate a [`PulseSequence`] against resource limits and physical constraints.
 ///
 /// Checks:

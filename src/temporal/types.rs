@@ -42,20 +42,12 @@ impl TimePoint {
     /// # Errors
     ///
     /// Returns `Err` if any invariant is violated.
-    pub fn new(
-        nominal_ns: f64,
-        precision_ns: f64,
-        jitter_bound_ns: f64,
-    ) -> Result<Self, String> {
+    pub fn new(nominal_ns: f64, precision_ns: f64, jitter_bound_ns: f64) -> Result<Self, String> {
         if nominal_ns < 0.0 {
-            return Err(format!(
-                "nominal_ns must be non-negative, got {nominal_ns}"
-            ));
+            return Err(format!("nominal_ns must be non-negative, got {nominal_ns}"));
         }
         if precision_ns <= 0.0 {
-            return Err(format!(
-                "precision_ns must be positive, got {precision_ns}"
-            ));
+            return Err(format!("precision_ns must be positive, got {precision_ns}"));
         }
         if jitter_bound_ns < 0.0 {
             return Err(format!(

@@ -45,5 +45,5 @@ pub mod quantum {
 // Re-exports for convenience
 pub use quantum::backend::v1::*;
 pub use quantum::common::v1 as common;
-pub use quantum::pulse::v1 as pulse;
 pub use quantum::error::v1 as error;
+pub use quantum::pulse::v1 as pulse;

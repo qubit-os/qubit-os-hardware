@@ -551,8 +551,8 @@ fn default_max_grape_iterations() -> u32 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::io::Write as _;
     use serial_test::serial;
+    use std::io::Write as _;
 
     #[test]
     fn test_default_config() {
