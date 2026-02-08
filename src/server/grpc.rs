@@ -107,6 +107,7 @@ fn sanitize_error_for_status(error: &Error) -> String {
 }
 
 /// Convert a proto i32 to a domain u32, returning InvalidArgument on negative.
+#[allow(clippy::result_large_err)]
 fn i32_to_u32(value: i32, field: &str) -> std::result::Result<u32, Status> {
     u32::try_from(value).map_err(|_| {
         Status::invalid_argument(format!("{} must be non-negative, got {}", field, value))
@@ -114,6 +115,7 @@ fn i32_to_u32(value: i32, field: &str) -> std::result::Result<u32, Status> {
 }
 
 /// Convert a proto Vec<i32> to domain Vec<u32>, returning InvalidArgument on negative.
+#[allow(clippy::result_large_err)]
 fn i32_vec_to_u32(values: &[i32], field: &str) -> std::result::Result<Vec<u32>, Status> {
     values
         .iter()
@@ -601,6 +603,8 @@ mod tests {
                 code_version: String::new(),
                 random_seed: 0,
                 custom_unitary_json: String::new(),
+                duration: None,
+                awg_config: None,
             }),
             num_shots: 1000,
             measurement_basis: "z".to_string(),
@@ -609,6 +613,7 @@ mod tests {
             include_noise: false,
             timeout_ms: 0,
             allow_calibration_mismatch: false,
+            pulse_sequence: None,
         }
     }
 
@@ -669,6 +674,7 @@ mod tests {
             include_noise: false,
             timeout_ms: 0,
             allow_calibration_mismatch: false,
+            pulse_sequence: None,
         };
 
         let err = svc.execute_pulse(Request::new(req)).await.unwrap_err();

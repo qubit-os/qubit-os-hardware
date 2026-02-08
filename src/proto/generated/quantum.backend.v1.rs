@@ -43,6 +43,10 @@ pub struct ExecutePulseRequest {
     /// If true, executes with WARNING; if false, rejects with FAILED_PRECONDITION.
     #[prost(bool, tag = "10")]
     pub allow_calibration_mismatch: bool,
+    /// Full pulse sequence with temporal constraints.
+    /// If set, the server executes the sequence rather than a single pulse.
+    #[prost(message, optional, tag = "11")]
+    pub pulse_sequence: ::core::option::Option<super::super::pulse::v1::PulseSequence>,
 }
 /// ExecutePulseResponse contains the execution result.
 #[derive(Clone, PartialEq, ::prost::Message)]

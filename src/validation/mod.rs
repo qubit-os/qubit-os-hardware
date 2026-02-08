@@ -336,6 +336,55 @@ pub fn validate_api_request(
     Ok(())
 }
 
+
+/// Validate a [`PulseSequence`] against resource limits and physical constraints.
+///
+/// Checks:
+/// 1. Total sequence duration does not exceed `limits.max_pulse_duration_ns`
+/// 2. Each pulse's sample count does not exceed `limits.max_time_steps`
+/// 3. All temporal constraints are satisfied
+/// 4. No pulse overlaps on the same qubit
+/// 5. Decoherence budget is within thresholds
+///
+/// Returns `Ok(())` if valid, or the first error found.
+///
+/// See TIME-MODEL-SPEC.md §12.4 for design rationale.
+pub fn validate_pulse_sequence(
+    sequence: &crate::temporal::PulseSequence,
+    limits: &ResourceLimits,
+) -> Result<()> {
+    // 1. Total duration check
+    let total_ns = sequence.total_duration_ns();
+    if total_ns > limits.max_pulse_duration_ns as f64 {
+        return Err(ValidationError::ResourceLimit {
+            resource: "pulse_sequence_duration_ns".into(),
+            limit: limits.max_pulse_duration_ns as u64,
+            requested: total_ns as u64,
+        }
+        .into());
+    }
+
+    // 2. Per-pulse sample count check
+    for pulse in &sequence.pulses {
+        let n_samples = pulse.duration.num_samples();
+        if n_samples > limits.max_time_steps {
+            return Err(ValidationError::ResourceLimit {
+                resource: format!("pulse '{}' num_samples", pulse.pulse_id),
+                limit: limits.max_time_steps as u64,
+                requested: n_samples as u64,
+            }
+            .into());
+        }
+    }
+
+    // 3-5. Constraint, overlap, and decoherence checks via sequence.validate()
+    let issues = sequence.validate();
+    if let Some(first) = issues.first() {
+        return Err(ValidationError::PhysicsConstraint(first.clone()).into());
+    }
+
+    Ok(())
+}
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -493,5 +542,77 @@ mod tests {
         let msg = format!("{}", result.unwrap_err());
         assert!(msg.contains("q_envelope"));
         assert!(msg.contains("NaN"));
+    }
+
+    // =========================================================================
+    // validate_pulse_sequence tests
+    // =========================================================================
+
+    #[test]
+    fn test_validate_pulse_sequence_valid() {
+        let mut seq = crate::temporal::PulseSequence::new();
+        seq.append("a".into(), vec![0], 0.0, 20.0).unwrap();
+        seq.append("b".into(), vec![1], 0.0, 30.0).unwrap();
+        let limits = ResourceLimits::default();
+        assert!(validate_pulse_sequence(&seq, &limits).is_ok());
+    }
+
+    #[test]
+    fn test_validate_pulse_sequence_empty() {
+        let seq = crate::temporal::PulseSequence::new();
+        let limits = ResourceLimits::default();
+        assert!(validate_pulse_sequence(&seq, &limits).is_ok());
+    }
+
+    #[test]
+    fn test_validate_pulse_sequence_exceeds_duration() {
+        let mut seq = crate::temporal::PulseSequence::new();
+        // max_pulse_duration_ns default is 100_000
+        seq.append("a".into(), vec![0], 0.0, 200_000.0).unwrap();
+        let limits = ResourceLimits::default();
+        let result = validate_pulse_sequence(&seq, &limits);
+        assert!(result.is_err());
+        let msg = format!("{}", result.unwrap_err());
+        assert!(msg.contains("pulse_sequence_duration_ns"));
+    }
+
+    #[test]
+    fn test_validate_pulse_sequence_exceeds_time_steps() {
+        let mut seq = crate::temporal::PulseSequence::new();
+        // With 1 ns precision, 20000 ns = 20000 samples > default 10000
+        seq.append("a".into(), vec![0], 0.0, 20_000.0).unwrap();
+        let mut limits = ResourceLimits::default();
+        limits.max_time_steps = 10_000;
+        let result = validate_pulse_sequence(&seq, &limits);
+        assert!(result.is_err());
+        let msg = format!("{}", result.unwrap_err());
+        assert!(msg.contains("num_samples"));
+    }
+
+    #[test]
+    fn test_validate_pulse_sequence_overlap_detected() {
+        let mut seq = crate::temporal::PulseSequence::new();
+        seq.append("a".into(), vec![0], 0.0, 20.0).unwrap();
+        seq.append("b".into(), vec![0], 10.0, 20.0).unwrap();
+        let limits = ResourceLimits::default();
+        let result = validate_pulse_sequence(&seq, &limits);
+        assert!(result.is_err());
+        let msg = format!("{}", result.unwrap_err());
+        assert!(msg.contains("OVERLAP"));
+    }
+
+    #[test]
+    fn test_validate_pulse_sequence_with_awg() {
+        let awg = crate::temporal::AWGClockConfig {
+            sample_rate_ghz: 2.0,
+            jitter_bound_ns: 0.01,
+            min_samples: 4,
+            max_samples: 10_000,
+        };
+        let mut seq = crate::temporal::PulseSequence::with_awg(awg);
+        seq.append("x_gate".into(), vec![0], 0.0, 20.0).unwrap();
+        seq.append("y_gate".into(), vec![0], 20.0, 20.0).unwrap();
+        let limits = ResourceLimits::default();
+        assert!(validate_pulse_sequence(&seq, &limits).is_ok());
     }
 }

@@ -100,6 +100,41 @@ pub mod hamiltonian_spec {
         }
     }
 }
+/// A physical time value with precision and uncertainty context.
+/// See TIME-MODEL-SPEC.md section 5.1 for design rationale.
+///
+/// Added in v0.2.0. Used by PulseShape, OptimizeRequest, and temporal.proto.
+#[derive(Clone, Copy, PartialEq, ::prost::Message)]
+pub struct TimePoint {
+    /// Intended time value in nanoseconds.
+    #[prost(double, tag = "1")]
+    pub nominal_ns: f64,
+    /// AWG clock resolution in nanoseconds. Durations are quantized
+    /// to integer multiples of this value. Default 1.0 (1 GSa/s AWG).
+    #[prost(double, tag = "2")]
+    pub precision_ns: f64,
+    /// Worst-case timing uncertainty in nanoseconds.
+    #[prost(double, tag = "3")]
+    pub jitter_bound_ns: f64,
+}
+/// AWG clock configuration.
+///
+/// Added in v0.2.0. Used by PulseShape, OptimizeRequest, and temporal.proto.
+#[derive(Clone, Copy, PartialEq, ::prost::Message)]
+pub struct AwgClockConfig {
+    /// Sample rate in GHz (samples per nanosecond).
+    #[prost(double, tag = "1")]
+    pub sample_rate_ghz: f64,
+    /// Worst-case timing jitter in nanoseconds.
+    #[prost(double, tag = "2")]
+    pub jitter_bound_ns: f64,
+    /// Minimum samples per pulse waveform.
+    #[prost(int32, tag = "3")]
+    pub min_samples: i32,
+    /// Maximum samples per pulse waveform.
+    #[prost(int32, tag = "4")]
+    pub max_samples: i32,
+}
 /// PulseShape defines a complete pulse waveform for quantum gate implementation.
 ///
 /// The pulse consists of in-phase (I) and quadrature (Q) components,
@@ -133,8 +168,10 @@ pub struct PulseShape {
     #[prost(double, tag = "5")]
     pub target_fidelity: f64,
     /// Total pulse duration in nanoseconds.
+    /// DEPRECATED in v0.2.0: Use TimePoint duration (field 22) for new code.
+    /// Maintained for backward compatibility; will be removed in v0.4.0.
     /// Typical range: 10-1000 ns
-    /// Limit: 100,000 ns (100 μs, enforced by server)
+    /// Limit: 100,000 ns (100 us, enforced by server)
     #[prost(int32, tag = "6")]
     pub duration_ns: i32,
     /// Number of discrete time steps.
@@ -152,14 +189,14 @@ pub struct PulseShape {
     /// Length must equal num_time_steps.
     /// Units: MHz (drive amplitude)
     /// Limit: 10,000 elements max (enforced by server)
-    /// Values must be finite and within ±1000 MHz
+    /// Values must be finite and within +/-1000 MHz
     #[prost(double, repeated, tag = "9")]
     pub i_envelope: ::prost::alloc::vec::Vec<f64>,
     /// Quadrature (Q) component of the pulse envelope.
     /// Length must equal num_time_steps.
     /// Units: MHz (drive amplitude)
     /// Limit: 10,000 elements max (enforced by server)
-    /// Values must be finite and within ±1000 MHz
+    /// Values must be finite and within +/-1000 MHz
     #[prost(double, repeated, tag = "10")]
     pub q_envelope: ::prost::alloc::vec::Vec<f64>,
     /// Maximum amplitude bound in MHz.
@@ -202,6 +239,12 @@ pub struct PulseShape {
     /// Format: {"rows": N, "cols": N, "data": \[[re, im\], ...]}
     #[prost(string, tag = "21")]
     pub custom_unitary_json: ::prost::alloc::string::String,
+    /// AWG-aware duration. If set, takes precedence over duration_ns (field 6).
+    #[prost(message, optional, tag = "22")]
+    pub duration: ::core::option::Option<TimePoint>,
+    /// AWG configuration used to generate this pulse.
+    #[prost(message, optional, tag = "23")]
+    pub awg_config: ::core::option::Option<AwgClockConfig>,
 }
 /// PulseLibraryEntry represents a named pulse in a library.
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -378,6 +421,8 @@ pub struct OptimizeRequest {
     #[prost(int32, tag = "9")]
     pub num_time_steps: i32,
     /// Total pulse duration in nanoseconds.
+    /// DEPRECATED in v0.2.0: Use TimePoint duration (field 17) for new code.
+    /// Maintained for backward compatibility; will be removed in v0.4.0.
     /// Typical: 20-100 ns for single-qubit, 40-200 ns for two-qubit.
     #[prost(int32, tag = "10")]
     pub duration_ns: i32,
@@ -405,6 +450,12 @@ pub struct OptimizeRequest {
     /// If specified, optimization uses this calibration's noise parameters.
     #[prost(string, tag = "16")]
     pub calibration_fingerprint: ::prost::alloc::string::String,
+    /// AWG-aware duration. If set, takes precedence over duration_ns (field 10).
+    #[prost(message, optional, tag = "17")]
+    pub duration: ::core::option::Option<TimePoint>,
+    /// AWG configuration for the target hardware.
+    #[prost(message, optional, tag = "18")]
+    pub awg_config: ::core::option::Option<AwgClockConfig>,
 }
 /// GRAPEOptions contains advanced optimizer configuration.
 ///
@@ -919,5 +970,112 @@ pub mod grape_service_server {
     pub const SERVICE_NAME: &str = "quantum.pulse.v1.GRAPEService";
     impl<T> tonic::server::NamedService for GrapeServiceServer<T> {
         const NAME: &'static str = SERVICE_NAME;
+    }
+}
+/// A temporal constraint between two pulses.
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct TemporalConstraint {
+    #[prost(enumeration = "ConstraintKind", tag = "1")]
+    pub kind: i32,
+    /// Pulse identifiers (must match pulse_id in ScheduledPulse).
+    #[prost(string, tag = "2")]
+    pub pulse_a_id: ::prost::alloc::string::String,
+    #[prost(string, tag = "3")]
+    pub pulse_b_id: ::prost::alloc::string::String,
+    /// Meaning depends on constraint kind (see TIME-MODEL-SPEC.md section 6).
+    #[prost(double, tag = "4")]
+    pub tolerance_ns: f64,
+    /// For ALIGNED constraints: fraction of pulse_a duration at which
+    /// pulse_b should be centered. Must be in (0, 1). Default 0.5.
+    #[prost(double, tag = "5")]
+    pub alignment_fraction: f64,
+}
+/// A pulse with an assigned position in a sequence.
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ScheduledPulse {
+    #[prost(string, tag = "1")]
+    pub pulse_id: ::prost::alloc::string::String,
+    #[prost(int32, repeated, tag = "2")]
+    pub qubit_indices: ::prost::alloc::vec::Vec<i32>,
+    #[prost(message, optional, tag = "3")]
+    pub start_time: ::core::option::Option<TimePoint>,
+    #[prost(message, optional, tag = "4")]
+    pub duration: ::core::option::Option<TimePoint>,
+    /// The pulse envelope. Optional — may be populated later by the
+    /// optimizer or loaded from a library.
+    #[prost(message, optional, tag = "5")]
+    pub pulse_data: ::core::option::Option<PulseShape>,
+}
+/// Per-qubit decoherence budget tracking.
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct DecoherenceBudget {
+    /// Per-qubit T1 relaxation time in microseconds.
+    #[prost(map = "int32, double", tag = "1")]
+    pub t1_us: ::std::collections::HashMap<i32, f64>,
+    /// Per-qubit T2 dephasing time in microseconds.
+    #[prost(map = "int32, double", tag = "2")]
+    pub t2_us: ::std::collections::HashMap<i32, f64>,
+    /// Warning threshold: fraction of T2 consumed before warning.
+    #[prost(double, tag = "3")]
+    pub warn_fraction: f64,
+    /// Blocking threshold: fraction of T2 consumed before rejection.
+    #[prost(double, tag = "4")]
+    pub block_fraction: f64,
+    /// Accumulated time per qubit in nanoseconds.
+    #[prost(map = "int32, double", tag = "5")]
+    pub qubit_time_ns: ::std::collections::HashMap<i32, f64>,
+}
+/// An ordered sequence of pulses with temporal constraints.
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct PulseSequence {
+    #[prost(message, repeated, tag = "1")]
+    pub pulses: ::prost::alloc::vec::Vec<ScheduledPulse>,
+    #[prost(message, repeated, tag = "2")]
+    pub constraints: ::prost::alloc::vec::Vec<TemporalConstraint>,
+    #[prost(message, optional, tag = "3")]
+    pub decoherence_budget: ::core::option::Option<DecoherenceBudget>,
+    #[prost(message, optional, tag = "4")]
+    pub awg_config: ::core::option::Option<AwgClockConfig>,
+    /// Total sequence duration in nanoseconds (computed, informational).
+    #[prost(double, tag = "5")]
+    pub total_duration_ns: f64,
+}
+/// Types of temporal relationships between pulses.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+#[repr(i32)]
+pub enum ConstraintKind {
+    Unspecified = 0,
+    Simultaneous = 1,
+    Sequential = 2,
+    Aligned = 3,
+    MaxDelay = 4,
+    MinGap = 5,
+}
+impl ConstraintKind {
+    /// String value of the enum field names used in the ProtoBuf definition.
+    ///
+    /// The values are not transformed in any way and thus are considered stable
+    /// (if the ProtoBuf definition does not change) and safe for programmatic use.
+    pub fn as_str_name(&self) -> &'static str {
+        match self {
+            Self::Unspecified => "CONSTRAINT_KIND_UNSPECIFIED",
+            Self::Simultaneous => "CONSTRAINT_KIND_SIMULTANEOUS",
+            Self::Sequential => "CONSTRAINT_KIND_SEQUENTIAL",
+            Self::Aligned => "CONSTRAINT_KIND_ALIGNED",
+            Self::MaxDelay => "CONSTRAINT_KIND_MAX_DELAY",
+            Self::MinGap => "CONSTRAINT_KIND_MIN_GAP",
+        }
+    }
+    /// Creates an enum from field names used in the ProtoBuf definition.
+    pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+        match value {
+            "CONSTRAINT_KIND_UNSPECIFIED" => Some(Self::Unspecified),
+            "CONSTRAINT_KIND_SIMULTANEOUS" => Some(Self::Simultaneous),
+            "CONSTRAINT_KIND_SEQUENTIAL" => Some(Self::Sequential),
+            "CONSTRAINT_KIND_ALIGNED" => Some(Self::Aligned),
+            "CONSTRAINT_KIND_MAX_DELAY" => Some(Self::MaxDelay),
+            "CONSTRAINT_KIND_MIN_GAP" => Some(Self::MinGap),
+            _ => None,
+        }
     }
 }
