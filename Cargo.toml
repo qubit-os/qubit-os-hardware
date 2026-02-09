@@ -54,7 +54,7 @@ async-trait = "0.1"
 parking_lot = "0.12"
 
 # HTTP client (for IQM) - optional
-reqwest = { version = "0.12", features = ["json", "rustls-tls"], optional = true }
+reqwest = { version = "0.13", features = ["json", "rustls-tls"], optional = true }
 
 # Secrets handling (for IQM auth tokens) - optional
 secrecy = { version = "0.10", features = ["serde"], optional = true }
