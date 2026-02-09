@@ -2,7 +2,7 @@
 name = "qubit-os-hardware"
 version = "0.1.0"
 edition = "2021"
-rust-version = "1.83"
+rust-version = "1.85"
 authors = ["QubitOS Contributors"]
 description = "Hardware Abstraction Layer for QubitOS quantum control kernel"
 license = "Apache-2.0"

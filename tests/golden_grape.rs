@@ -60,7 +60,8 @@ fn test_golden_x_gate_converges() {
     assert!(
         result.fidelity > 0.90,
         "X gate: Rust fidelity {:.4} should exceed 0.90 (Python got {:.4})",
-        result.fidelity, entry.python_fidelity
+        result.fidelity,
+        entry.python_fidelity
     );
 }
 
@@ -72,7 +73,8 @@ fn test_golden_h_gate_converges() {
     assert!(
         result.fidelity > 0.90,
         "H gate: Rust fidelity {:.4} should exceed 0.90 (Python got {:.4})",
-        result.fidelity, entry.python_fidelity
+        result.fidelity,
+        entry.python_fidelity
     );
 }
 
@@ -84,7 +86,8 @@ fn test_golden_y_gate_converges() {
     assert!(
         result.fidelity > 0.90,
         "Y gate: Rust fidelity {:.4} should exceed 0.90 (Python got {:.4})",
-        result.fidelity, entry.python_fidelity
+        result.fidelity,
+        entry.python_fidelity
     );
 }
 
@@ -97,7 +100,8 @@ fn test_golden_t_gate_converges() {
     assert!(
         result.fidelity > 0.85,
         "T gate: Rust fidelity {:.4} should exceed 0.85 (Python got {:.4})",
-        result.fidelity, entry.python_fidelity
+        result.fidelity,
+        entry.python_fidelity
     );
 }
 
@@ -125,14 +129,15 @@ fn test_golden_speedup_vs_python() {
     };
 
     let speedup = entry.python_time_s / median_rust;
-    eprintln!(
-        "\nSpeedup benchmark (X gate, 50 steps, 1000 max iters):"
-    );
+    eprintln!("\nSpeedup benchmark (X gate, 50 steps, 1000 max iters):");
     eprintln!("  Python: {:.3}s", entry.python_time_s);
     eprintln!(
         "  Rust:   {:.3}s (median of 5, all: {:?})",
         median_rust,
-        rust_times.iter().map(|t| format!("{:.3}s", t)).collect::<Vec<_>>()
+        rust_times
+            .iter()
+            .map(|t| format!("{:.3}s", t))
+            .collect::<Vec<_>>()
     );
     eprintln!("  Speedup: {:.1}x", speedup);
 

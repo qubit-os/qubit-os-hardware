@@ -24,11 +24,11 @@
 pub mod python {
     use ndarray::Array2;
     use num_complex::Complex64;
-    use pyo3::prelude::*;
     use pyo3::exceptions::PyValueError;
+    use pyo3::prelude::*;
 
-    use crate::grape::types::GrapeConfig;
     use crate::grape::optimize::GrapeOptimizer;
+    use crate::grape::types::GrapeConfig;
 
     /// Rust GRAPE optimizer exposed to Python via PyO3.
     ///
@@ -92,23 +92,21 @@ pub mod python {
         #[pyo3(signature = (target, drift, controls, dim))]
         fn optimize(
             &self,
-            target: Vec<f64>,     // [re, im, re, im, ...] flattened
+            target: Vec<f64>, // [re, im, re, im, ...] flattened
             drift: Vec<f64>,
             controls: Vec<Vec<f64>>,
             dim: usize,
         ) -> PyResult<PyGrapeResult> {
-            let target_mat = flat_to_complex_matrix(&target, dim)
-                .map_err(PyValueError::new_err)?;
-            let drift_mat = flat_to_complex_matrix(&drift, dim)
-                .map_err(PyValueError::new_err)?;
+            let target_mat = flat_to_complex_matrix(&target, dim).map_err(PyValueError::new_err)?;
+            let drift_mat = flat_to_complex_matrix(&drift, dim).map_err(PyValueError::new_err)?;
             let ctrl_mats: Result<Vec<_>, _> = controls
                 .iter()
                 .map(|c| flat_to_complex_matrix(c, dim))
                 .collect();
             let ctrl_mats = ctrl_mats.map_err(PyValueError::new_err)?;
 
-            let optimizer = GrapeOptimizer::new(self.config.clone())
-                .map_err(PyValueError::new_err)?;
+            let optimizer =
+                GrapeOptimizer::new(self.config.clone()).map_err(PyValueError::new_err)?;
             let result = optimizer.optimize(&target_mat, &drift_mat, &ctrl_mats);
 
             Ok(PyGrapeResult {
@@ -128,7 +126,10 @@ pub mod python {
         if data.len() != expected {
             return Err(format!(
                 "Expected {} floats for {}x{} complex matrix, got {}",
-                expected, dim, dim, data.len()
+                expected,
+                dim,
+                dim,
+                data.len()
             ));
         }
         let mut mat = Array2::zeros((dim, dim));

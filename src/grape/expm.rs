@@ -93,9 +93,7 @@ fn pade13(a: &Array2<Complex64>) -> Array2<Complex64> {
     // D = b12*A6 + b10*A4 + b8*A2 + b6*I)*(A6) + b4*A4 + b2*A2 + b0*I
 
     // Build W1 = b13*A6 + b11*A4 + b9*A2
-    let w1 = &a6 * c(PADE_COEFFS[13])
-        + &a4 * c(PADE_COEFFS[11])
-        + &a2 * c(PADE_COEFFS[9]);
+    let w1 = &a6 * c(PADE_COEFFS[13]) + &a4 * c(PADE_COEFFS[11]) + &a2 * c(PADE_COEFFS[9]);
 
     // W2 = W1*A6 + b7*A6 + b5*A4 + b3*A2 + b1*I
     let w2 = w1.dot(&a6)
@@ -108,9 +106,7 @@ fn pade13(a: &Array2<Complex64>) -> Array2<Complex64> {
     let u = a.dot(&w2);
 
     // V1 = b12*A6 + b10*A4 + b8*A2
-    let v1 = &a6 * c(PADE_COEFFS[12])
-        + &a4 * c(PADE_COEFFS[10])
-        + &a2 * c(PADE_COEFFS[8]);
+    let v1 = &a6 * c(PADE_COEFFS[12]) + &a4 * c(PADE_COEFFS[10]) + &a2 * c(PADE_COEFFS[8]);
 
     // V = V1*A6 + b6*A6 + b4*A4 + b2*A2 + b0*I
     let v = v1.dot(&a6)
@@ -227,18 +223,18 @@ mod tests {
     use std::f64::consts::PI;
 
     /// Helper to check matrix equality within tolerance.
-    fn assert_matrix_close(
-        a: &Array2<Complex64>,
-        b: &Array2<Complex64>,
-        tol: f64,
-    ) {
+    fn assert_matrix_close(a: &Array2<Complex64>, b: &Array2<Complex64>, tol: f64) {
         assert_eq!(a.shape(), b.shape());
         for ((i, j), val) in a.indexed_iter() {
             let diff = (val - b[[i, j]]).norm();
             assert!(
                 diff < tol,
                 "Mismatch at ({}, {}): {:?} vs {:?} (diff={})",
-                i, j, val, b[[i, j]], diff
+                i,
+                j,
+                val,
+                b[[i, j]],
+                diff
             );
         }
     }

@@ -44,7 +44,10 @@ impl GrapeOptimizer {
 
         assert_eq!(target.nrows(), target.ncols(), "Target must be square");
         assert_eq!(drift.nrows(), d, "Drift dimension must match target");
-        assert!(controls.len() >= 2, "Need at least 2 control Hamiltonians (Hx, Hy)");
+        assert!(
+            controls.len() >= 2,
+            "Need at least 2 control Hamiltonians (Hx, Hy)"
+        );
 
         // Initialize pulse envelopes with ~25% of max amplitude (100 MHz)
         // to escape the saddle point at U=I for trace-zero targets
@@ -101,17 +104,11 @@ impl GrapeOptimizer {
 
             // Compute gradients
             let (grad_i, grad_q) = compute_gradients(
-                &i_pulse, &q_pulse, drift, controls, dt,
-                &forward, &backward, target, d,
+                &i_pulse, &q_pulse, drift, controls, dt, &forward, &backward, target, d,
             );
 
             // Adaptive learning rate: scale with dimension
-            let lr = adaptive_learning_rate(
-                self.config.learning_rate,
-                iter,
-                &fidelity_history,
-                d,
-            );
+            let lr = adaptive_learning_rate(self.config.learning_rate, iter, &fidelity_history, d);
 
             // Update pulses
             for t in 0..n_steps {
@@ -208,9 +205,7 @@ pub fn gate_fidelity(achieved: &Array2<Complex64>, target: &Array2<Complex64>) -
     let target_dag = target.t().mapv(|x| x.conj());
     let product = target_dag.dot(achieved);
 
-    let trace: Complex64 = (0..product.nrows())
-        .map(|i| product[[i, i]])
-        .sum();
+    let trace: Complex64 = (0..product.nrows()).map(|i| product[[i, i]]).sum();
 
     let overlap_sq = trace.norm_sqr();
     let fid = (overlap_sq + d) / (d * d + d);
@@ -261,7 +256,7 @@ fn compute_gradients(
         if controls.len() >= 2 {
             // dU_t = (-i·2π·dt·1e6) · H_ctrl · U_t
             // gradient = norm_factor · Re(chi* · Tr(W† · Q · dU_t · P))
-            
+
             // I channel: H_ctrl = controls[0]
             let du_i = (&controls[0] * deriv_scale).dot(&props[t]);
             let sandwich_i = target_dag.dot(&q.dot(&du_i.dot(p)));
@@ -283,12 +278,7 @@ fn compute_gradients(
 ///
 /// Compensates for the 1/(d²+d) normalization in the gradient and
 /// provides momentum/decay based on convergence progress.
-fn adaptive_learning_rate(
-    base_lr: f64,
-    iteration: usize,
-    history: &[f64],
-    dim: usize,
-) -> f64 {
+fn adaptive_learning_rate(base_lr: f64, iteration: usize, history: &[f64], dim: usize) -> f64 {
     // Dimension-dependent scale: compensate for gradient normalization.
     // Fidelity gradient ∝ 1/(d²+d), so we scale by (d²+d)/6 relative
     // to the single-qubit baseline (d=2: (4+2)/6 = 1.0).
@@ -447,18 +437,25 @@ mod tests {
 
         // forward[n_steps] should equal total
         let fwd_total = &fwd[n_steps];
-        let diff: f64 = fwd_total.iter().zip(total.iter()).map(|(a, b)| (a - b).norm()).sum();
+        let diff: f64 = fwd_total
+            .iter()
+            .zip(total.iter())
+            .map(|(a, b)| (a - b).norm())
+            .sum();
         eprintln!("forward[n] vs total diff: {}", diff);
         assert!(diff < 1e-10, "forward[n] should equal total unitary");
 
         // backward[0] should also equal total
-        let diff2: f64 = bwd[0].iter().zip(total.iter()).map(|(a, b)| (a - b).norm()).sum();
+        let diff2: f64 = bwd[0]
+            .iter()
+            .zip(total.iter())
+            .map(|(a, b)| (a - b).norm())
+            .sum();
         eprintln!("backward[0] vs total diff: {}", diff2);
         assert!(diff2 < 1e-10, "backward[0] should equal total unitary");
 
         let (grad_i, grad_q) = super::compute_gradients(
-            &i_pulse, &q_pulse, &drift, &controls, dt,
-            &fwd, &bwd, &target, 2,
+            &i_pulse, &q_pulse, &drift, &controls, dt, &fwd, &bwd, &target, 2,
         );
 
         let max_grad_i: f64 = grad_i.iter().map(|x| x.abs()).fold(0.0, f64::max);
@@ -467,8 +464,9 @@ mod tests {
         eprintln!("Max |grad_q|: {}", max_grad_q);
         eprintln!("grad_i[0..3]: {:?}", &grad_i[..3]);
 
-        assert!(max_grad_i > 1e-10 || max_grad_q > 1e-10,
-            "Gradients should be non-zero for non-optimal pulse");
+        assert!(
+            max_grad_i > 1e-10 || max_grad_q > 1e-10,
+            "Gradients should be non-zero for non-optimal pulse"
+        );
     }
 }
-
