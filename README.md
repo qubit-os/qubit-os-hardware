@@ -2,8 +2,11 @@
 
 [![CI](https://github.com/qubit-os/qubit-os-hardware/actions/workflows/ci.yaml/badge.svg)](https://github.com/qubit-os/qubit-os-hardware/actions/workflows/ci.yaml)
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
+[![Rust](https://img.shields.io/badge/rust-1.83+-orange.svg)](https://www.rust-lang.org/)
 
-Rust implementation of the QubitOS Hardware Abstraction Layer - the bridge between pulse optimization and quantum backends.
+Rust implementation of the QubitOS Hardware Abstraction Layer — the bridge between pulse optimization and quantum backends.
+
+Part of the [QubitOS](https://qubit-os.github.io) project. See also: [qubit-os-core](https://github.com/qubit-os/qubit-os-core) (Python) · [qubit-os-proto](https://github.com/qubit-os/qubit-os-proto) (Protobuf)
 
 ## Overview
 
