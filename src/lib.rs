@@ -33,6 +33,7 @@
 pub mod backend;
 pub mod config;
 pub mod error;
+pub mod grape;
 pub mod proto;
 pub mod server;
 pub mod temporal;
