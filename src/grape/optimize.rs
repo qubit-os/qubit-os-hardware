@@ -310,7 +310,6 @@ fn adaptive_learning_rate(base_lr: f64, iteration: usize, history: &[f64], dim: 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::f64::consts::PI;
 
     fn pauli_x() -> Array2<Complex64> {
         let mut m = Array2::zeros((2, 2));

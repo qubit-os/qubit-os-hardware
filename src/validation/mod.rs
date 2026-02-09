@@ -580,8 +580,10 @@ mod tests {
         let mut seq = crate::temporal::PulseSequence::new();
         // With 1 ns precision, 20000 ns = 20000 samples > default 10000
         seq.append("a".into(), vec![0], 0.0, 20_000.0).unwrap();
-        let mut limits = ResourceLimits::default();
-        limits.max_time_steps = 10_000;
+        let limits = ResourceLimits {
+            max_time_steps: 10_000,
+            ..Default::default()
+        };
         let result = validate_pulse_sequence(&seq, &limits);
         assert!(result.is_err());
         let msg = format!("{}", result.unwrap_err());

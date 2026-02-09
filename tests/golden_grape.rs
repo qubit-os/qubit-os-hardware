@@ -152,7 +152,7 @@ fn test_golden_speedup_vs_python() {
     #[cfg(debug_assertions)]
     {
         eprintln!("  (debug build — speedup assertion skipped, release gets ≥10x)");
-        assert!(true);
+        // Debug build — no speedup assertion needed
     }
 }
 
