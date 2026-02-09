@@ -98,14 +98,14 @@ pub mod python {
             dim: usize,
         ) -> PyResult<PyGrapeResult> {
             let target_mat = flat_to_complex_matrix(&target, dim)
-                .map_err(|e| PyValueError::new_err(e))?;
+                .map_err(PyValueError::new_err)?;
             let drift_mat = flat_to_complex_matrix(&drift, dim)
-                .map_err(|e| PyValueError::new_err(e))?;
+                .map_err(PyValueError::new_err)?;
             let ctrl_mats: Result<Vec<_>, _> = controls
                 .iter()
                 .map(|c| flat_to_complex_matrix(c, dim))
                 .collect();
-            let ctrl_mats = ctrl_mats.map_err(|e| PyValueError::new_err(e))?;
+            let ctrl_mats = ctrl_mats.map_err(PyValueError::new_err)?;
 
             let optimizer = GrapeOptimizer::new(self.config.clone())
                 .map_err(PyValueError::new_err)?;
