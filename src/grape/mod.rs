@@ -30,6 +30,7 @@
 
 pub mod expm;
 pub mod optimize;
+pub mod pyo3_bindings;
 pub mod types;
 
 pub use expm::matrix_exp;
