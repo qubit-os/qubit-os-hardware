@@ -9,6 +9,7 @@
 //! - `qutip::QutipBackend`: Local QuTiP simulator (requires `python` feature)
 //! - `iqm::IqmBackend`: IQM Garnet hardware backend (requires `iqm` feature)
 
+pub mod braket;
 pub mod ibm;
 #[cfg(feature = "iqm")]
 pub mod iqm;
