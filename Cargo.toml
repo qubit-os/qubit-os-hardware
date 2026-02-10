@@ -13,6 +13,7 @@ categories = ["science", "simulation"]
 [features]
 default = ["python"]
 python = ["dep:pyo3"]
+ibm = ["dep:reqwest"]
 iqm = ["dep:reqwest", "dep:secrecy"]
 
 [dependencies]

@@ -80,7 +80,7 @@ impl From<serde_json::Error> for Error {
 }
 
 /// Backend-specific errors.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum BackendError {
     /// Backend not found
     NotFound(String),
