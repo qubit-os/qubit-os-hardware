@@ -10,6 +10,7 @@
 //! - `iqm::IqmBackend`: IQM Garnet hardware backend (requires `iqm` feature)
 
 pub mod braket;
+pub mod compiler;
 pub mod ibm;
 #[cfg(feature = "iqm")]
 pub mod iqm;
