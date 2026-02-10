@@ -152,6 +152,23 @@ async fn execute_single_pulse(
     state: &ServerState,
     req: ExecutePulseRequest,
 ) -> std::result::Result<Response<ExecutePulseResponse>, Status> {
+    // Validate temporal constraints if a pulse_sequence is provided.
+    // This rejects invalid sequences before they reach backend hardware.
+    if let Some(ref sequence) = req.pulse_sequence {
+        let violations = super::temporal::validate_temporal_constraints(sequence);
+        if !violations.is_empty() {
+            let msg = violations
+                .iter()
+                .map(|v| v.to_string())
+                .collect::<Vec<_>>()
+                .join("; ");
+            return Err(Status::invalid_argument(format!(
+                "temporal constraint violations: {}",
+                msg
+            )));
+        }
+    }
+
     // Extract the nested PulseShape (required field)
     let pulse = req
         .pulse
