@@ -45,7 +45,9 @@
 
 pub mod dissipator;
 pub mod integrate;
+pub mod open_grape;
 pub mod types;
 
 pub use integrate::{hellinger_distance, solve_lindblad, state_fidelity, trace_distance};
+pub use open_grape::{OpenSystemGrapeConfig, OpenSystemGrapeResult, OpenSystemOptimizer};
 pub use types::{CollapseOperator, LindbladConfig, LindbladResult};
