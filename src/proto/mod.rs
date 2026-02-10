@@ -40,10 +40,17 @@ pub mod quantum {
             include!("generated/quantum.error.v1.rs");
         }
     }
+
+    pub mod provenance {
+        pub mod v1 {
+            include!("generated/quantum.provenance.v1.rs");
+        }
+    }
 }
 
 // Re-exports for convenience
 pub use quantum::backend::v1::*;
 pub use quantum::common::v1 as common;
 pub use quantum::error::v1 as error;
+pub use quantum::provenance::v1 as provenance;
 pub use quantum::pulse::v1 as pulse;

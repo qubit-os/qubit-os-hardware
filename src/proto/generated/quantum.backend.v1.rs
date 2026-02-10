@@ -125,6 +125,17 @@ pub struct MeasurementResult {
     pub error_budget: ::core::option::Option<
         super::super::error::v1::ErrorBudgetSummary,
     >,
+    /// Provenance hash identifying the full experimental context.
+    /// SHA-256 Merkle root covering calibration, pulse, GRAPE config, and software.
+    /// Empty string if provenance tracking was not enabled.
+    #[prost(string, tag = "15")]
+    pub provenance_hash: ::prost::alloc::string::String,
+    /// Full provenance tree (if requested).
+    /// Omitted by default to reduce message size; set include_provenance=true on request.
+    #[prost(message, optional, tag = "16")]
+    pub provenance_tree: ::core::option::Option<
+        super::super::provenance::v1::ProvenanceTree,
+    >,
 }
 /// Nested message and enum types in `MeasurementResult`.
 pub mod measurement_result {

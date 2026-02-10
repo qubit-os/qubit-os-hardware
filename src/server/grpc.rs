@@ -261,6 +261,8 @@ async fn execute_single_pulse(
         timing: None,
         predicted_fidelity: 0.0,
         error_budget: None,
+        provenance_hash: String::new(),
+        provenance_tree: None,
     };
 
     let response = ExecutePulseResponse {
