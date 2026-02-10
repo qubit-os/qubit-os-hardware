@@ -69,7 +69,7 @@ num-traits = "0.2"
 clap = { version = "4.4", features = ["derive", "env"] }
 
 [build-dependencies]
-tonic-build = "0.12"
+tonic-build = "0.14"
 
 [dev-dependencies]
 approx = "0.5"
